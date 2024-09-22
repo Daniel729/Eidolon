@@ -48,6 +48,22 @@ impl Move {
         }
     }
 
+    // Return the moves index inside history, if it is a quiet move
+    pub fn index_history(&self) -> Option<usize> {
+        match self {
+            Move::Normal {
+                piece,
+                end,
+                captured_piece,
+                ..
+            } => match captured_piece {
+                Some(_) => None,
+                None => Some(piece.as_index() * 64 + end.as_usize()),
+            },
+            _ => None,
+        }
+    }
+
     pub fn uci_notation(&self) -> String {
         let mut s = String::new();
         match self {

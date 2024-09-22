@@ -37,7 +37,14 @@ fn main() {
             let depth = get_parameter(&mut args, 7);
             let steps = get_parameter(&mut args, 5);
 
-            benchmark::run_benchmark(depth, steps);
+            benchmark::run_simple_benchmark(depth, steps);
+        } else if arg == "iterbench" {
+            // Generate best moves for a couple different positions
+            // This is used for benchmarking and PGO optimization
+            let depth = get_parameter(&mut args, 7);
+            let steps = get_parameter(&mut args, 5);
+
+            benchmark::run_iterative_benchmark(depth, steps);
         } else if arg == "perft" {
             // Generate perft test result
             let depth = get_parameter(&mut args, 7);

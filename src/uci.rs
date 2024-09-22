@@ -127,11 +127,11 @@ pub fn uci_talk() {
                         time = Some(Duration::from_millis(env_time));
                     }
 
-                    println!("info time {:?}", time);
+                    let time = time.unwrap_or(Duration::from_secs(2));
 
-                    if let Some(best_move) =
-                        get_best_move_in_time(&game, time.unwrap_or(Duration::from_secs(2)))
-                    {
+                    println!("info time {:?}", time.as_millis());
+
+                    if let Some(best_move) = get_best_move_in_time(&game, time) {
                         println!("bestmove {}", best_move.uci_notation());
                         game.push_history(best_move);
                     }

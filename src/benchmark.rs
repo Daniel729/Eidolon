@@ -1,3 +1,5 @@
+use arrayvec::ArrayVec;
+
 use crate::{chess_game::ChessGame, move_struct::Move, search::get_best_move_entry};
 
 use std::{sync::atomic::AtomicBool, time::Instant};
@@ -14,7 +16,7 @@ const GAME: &str = "g1f3 g8f6 c2c4 g7g6 b1c3 f8g7 d2d4 e8g8 c1f4 d7d5 d1b3 d5c4
                 e1f3 f2e4 d8b8 b7b5 h3h4 h7h5 f3e5 g8g7 h2g1 f8c5 g1f1 e4g3 
                 f1e1 c5b4 e1d1 d5b3 d1c1 g3e2 c1b1 e2c3 b1c1 a2c2";
 
-pub fn run_benchmark(depth: u8, steps: u8) {
+pub fn run_simple_benchmark(depth: u8, steps: u8) {
     let mut moves = GAME.split_ascii_whitespace();
 
     let mut game = ChessGame::default();
@@ -24,7 +26,59 @@ pub fn run_benchmark(depth: u8, steps: u8) {
 
     'outer: loop {
         let now = Instant::now();
-        get_best_move_entry(game.clone(), &atomic_false, depth).unwrap();
+
+        let mut pv = ArrayVec::new();
+        let mut history = [0; 64 * 12];
+        get_best_move_entry(game.clone(), &atomic_false, depth, &mut pv, &mut history).unwrap();
+
+        durations.push(now.elapsed());
+
+        for _ in 0..steps {
+            let Some(_move) = moves.next() else {
+                break 'outer;
+            };
+
+            game.push(Move::from_uci_notation(_move, &game).unwrap());
+        }
+    }
+
+    let product = durations.iter().fold(1.0, |acc, x| acc * x.as_secs_f64());
+    let geo_mean = product.powf(1.0 / durations.len() as f64);
+
+    println!(
+        "Depth: {}, Steps: {}
+Geometric Mean: {:.2} ms",
+        depth,
+        steps,
+        geo_mean * 1000.0
+    );
+}
+
+pub fn run_iterative_benchmark(depth: u8, steps: u8) {
+    let mut moves = GAME.split_ascii_whitespace();
+
+    let mut game = ChessGame::default();
+    let mut durations = vec![];
+
+    let atomic_false = AtomicBool::new(false);
+
+    'outer: loop {
+        let now = Instant::now();
+
+        let mut pv = ArrayVec::new();
+        let mut history = [0; 64 * 12];
+
+        for iter_depth in 2..=depth {
+            get_best_move_entry(
+                game.clone(),
+                &atomic_false,
+                iter_depth,
+                &mut pv,
+                &mut history,
+            )
+            .unwrap();
+        }
+
         durations.push(now.elapsed());
 
         for _ in 0..steps {

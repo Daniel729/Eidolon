@@ -22,6 +22,19 @@ pub struct Piece {
 
 pub type Score = i16;
 
+impl PieceTypes {
+    pub fn material_value(self) -> u8 {
+        match self {
+            PieceTypes::Pawn => 1,
+            PieceTypes::Bishop => 3,
+            PieceTypes::Knight => 3,
+            PieceTypes::Rook => 5,
+            PieceTypes::Queen => 9,
+            PieceTypes::King => 100,
+        }
+    }
+}
+
 impl Piece {
     pub fn score(self, pos: Position, scores: &[Cell<&[i16; 64]>; 6]) -> Score {
         let piece_score_array = scores[self.piece_type as usize].get();
@@ -41,14 +54,18 @@ impl Piece {
     }
 
     pub fn material_value(self) -> u8 {
-        match self.piece_type {
-            PieceTypes::Pawn => 1,
-            PieceTypes::Bishop => 3,
-            PieceTypes::Knight => 3,
-            PieceTypes::Rook => 5,
-            PieceTypes::Queen => 9,
-            PieceTypes::King => 100,
-        }
+        self.piece_type.material_value()
+    }
+
+    pub fn as_index(self) -> usize {
+        (match self.piece_type {
+            PieceTypes::Pawn => 0,
+            PieceTypes::Bishop => 1,
+            PieceTypes::Knight => 2,
+            PieceTypes::Rook => 3,
+            PieceTypes::Queen => 4,
+            PieceTypes::King => 5,
+        }) + if self.owner == Players::Black { 6 } else { 0 }
     }
 
     pub fn get_moves(self, mut push: impl FnMut(Move), game: &ChessGame, pos: Position) {
