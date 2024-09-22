@@ -9,6 +9,7 @@ use crate::move_struct::Move;
 use crate::piece::{Piece, PieceTypes, Score};
 use crate::position::Position;
 use crate::scores::{self, ENDGAME_THRESHOLD};
+use crate::zobrist;
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum GamePhase {
@@ -29,8 +30,10 @@ pub struct ChessGame {
     pub current_player: Players,
     pub move_stack: Vec<Move>,
     pub phase: GamePhase,
+    hash: u64,
     board: [Option<Piece>; 64],
     past_scores: [Score; 64],
+    past_hashes: [u64; 64],
     /// Cells are used here in order to allow the changing of the scores
     /// depending on the game's state, e.g. for the endgame
     ///
@@ -59,8 +62,12 @@ impl ChessGame {
     pub fn new(fen: &str) -> anyhow::Result<Self> {
         let mut terms = fen.split_ascii_whitespace();
 
+        let mut hash = 0;
+        let mut score = 0;
+
         let mut board = [None; 64];
         let mut past_scores = [0; 64];
+        let mut past_hashes = [0; 64];
         let mut white_king_pos = None;
         let mut black_king_pos = None;
         let piece_scores: [Cell<&[i16; 64]>; 6] = [
@@ -101,10 +108,21 @@ impl ChessGame {
                     let position = Position::new_assert(row, col);
                     board[position.as_usize()] = Some(piece);
                     past_scores[position.as_usize()] = piece.score(position, &piece_scores);
+                    score += past_scores[position.as_usize()];
+                    past_hashes[position.as_usize()] = piece.hash(position);
+                    hash ^= past_hashes[position.as_usize()];
+
                     col += 1;
                 }
                 empty_count if character.is_ascii_digit() => {
-                    col += (empty_count as u8 - b'0') as i8;
+                    let count = (empty_count as u8 - b'0') as i8;
+                    for i in 0..count {
+                        let position = Position::new_assert(row, col + i);
+                        past_hashes[position.as_usize()] = zobrist::EMPTY_PLACE;
+                        hash ^= past_hashes[position.as_usize()];
+                    }
+
+                    col += count;
                 }
                 _ => bail!("Unknown character met"),
             }
@@ -162,14 +180,17 @@ impl ChessGame {
             move_stack: Vec::with_capacity(1000),
             king_positions: [white_king_pos, black_king_pos],
             current_player,
-            score: 0,
+            score,
+            hash,
             state: ArrayVec::new(),
             past_scores,
+            past_hashes,
             piece_scores,
             phase: GamePhase::Opening,
         };
 
         game.state.push(state);
+        game.hash ^= state.hash();
         game.update_phase();
 
         Ok(game)
@@ -179,6 +200,10 @@ impl ChessGame {
         self.state.len()
     }
 
+    pub fn hash(&self) -> u64 {
+        self.hash
+    }
+
     pub fn get_position(&self, position: Position) -> Option<Piece> {
         // SAFETY: position is always valid
         unsafe { *self.board.get_unchecked(position.as_usize()) }
@@ -186,13 +211,15 @@ impl ChessGame {
 
     fn set_position(&mut self, position: Position, new_place: Option<Piece>) {
         // SAFETY: position is always valid
-        let (place, place_score) = unsafe {
+        let (place, place_score, place_hash) = unsafe {
             (
                 self.board.get_unchecked_mut(position.as_usize()),
                 self.past_scores.get_unchecked_mut(position.as_usize()),
+                self.past_hashes.get_unchecked_mut(position.as_usize()),
             )
         };
 
+        self.hash ^= *place_hash;
         self.score -= *place_score;
 
         *place = new_place;
@@ -200,7 +227,11 @@ impl ChessGame {
         *place_score = place
             .map(|piece| piece.score(position, &self.piece_scores))
             .unwrap_or(0);
+        *place_hash = place
+            .map(|piece| piece.hash(position))
+            .unwrap_or(zobrist::EMPTY_PLACE);
 
+        self.hash ^= *place_hash;
         self.score += *place_score;
     }
 
@@ -434,18 +465,23 @@ impl ChessGame {
             }
         };
         self.current_player = self.current_player.the_other();
-        // SAFETY: The game will not be longer than 512 moves
+        self.hash ^= zobrist::BLACK_TO_MOVE;
+        self.hash ^= self.state().hash(); // SAFETY: The game will not be longer than 512 moves
         unsafe {
             self.state.push_unchecked(state);
         }
+        self.hash ^= self.state().hash();
     }
 
     pub fn pop(&mut self, _move: Move) {
+        self.hash ^= self.state().hash();
         // SAFETY: There is always a previous state
         unsafe {
             // self.state.pop() without verification for being empty
             self.state.set_len(self.len() - 1);
         }
+        self.hash ^= self.state().hash();
+        self.hash ^= zobrist::BLACK_TO_MOVE;
         self.current_player = self.current_player.the_other();
 
         match _move {

@@ -1,3 +1,5 @@
+use crate::zobrist;
+
 /// Information about the state of the game at a moment in time that can't be derived easily
 /// Because of that, we hold it in a stack in the ChessGame struct
 #[derive(Clone, Copy, Debug)]
@@ -8,6 +10,11 @@ pub struct GameState {
 }
 
 impl GameState {
+    #[inline]
+    pub fn hash(self) -> u64 {
+        unsafe { *zobrist::STATE.get_unchecked(self.bitfield as usize) }
+    }
+
     #[inline]
     pub const fn en_passant(self) -> i8 {
         (self.bitfield & 0b1111) as i8

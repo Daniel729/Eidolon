@@ -11,6 +11,7 @@ mod position;
 mod scores;
 mod search;
 mod uci;
+mod zobrist;
 
 use arrayvec::ArrayVec;
 use chess_game::ChessGame;

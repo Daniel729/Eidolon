@@ -3,6 +3,7 @@ use std::cell::{Cell, OnceCell};
 use crate::chess_game::{ChessGame, Players};
 use crate::move_struct::Move;
 use crate::position::Position;
+use crate::zobrist;
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, PartialOrd, Ord)]
 pub enum PieceTypes {
@@ -52,20 +53,29 @@ impl Piece {
 
         piece_score * self.owner as Score
     }
-
     pub fn material_value(self) -> u8 {
         self.piece_type.material_value()
     }
 
+    #[inline]
     pub fn as_index(self) -> usize {
-        (match self.piece_type {
-            PieceTypes::Pawn => 0,
-            PieceTypes::Bishop => 1,
-            PieceTypes::Knight => 2,
-            PieceTypes::Rook => 3,
-            PieceTypes::Queen => 4,
-            PieceTypes::King => 5,
-        }) + if self.owner == Players::Black { 6 } else { 0 }
+        // This function is used to index zobrist::PIECE array
+        // The return values are between 0 and 11
+        let mut index = self.piece_type as usize;
+        if self.owner == Players::Black {
+            index += 6;
+        }
+        index
+    }
+
+    #[inline]
+    pub fn hash(self, pos: Position) -> u64 {
+        // SAFETY: self.as_usize() is always in 0..12 and pos.as_usize() is always in 0..64
+        unsafe {
+            *zobrist::PIECE
+                .get_unchecked(pos.as_usize())
+                .get_unchecked(self.as_index())
+        }
     }
 
     pub fn get_moves(self, mut push: impl FnMut(Move), game: &ChessGame, pos: Position) {
