@@ -85,6 +85,7 @@ impl ChessGame {
 
         let mut row = 7;
         let mut col = 0;
+
         for character in pieces.chars() {
             match character {
                 '/' => {
@@ -128,6 +129,10 @@ impl ChessGame {
             }
         }
 
+        if row != 0 || col != 8 {
+            bail!("Invalid board size");
+        }
+
         let Some(next_player) = terms.next() else {
             bail!("Missing player");
         };
@@ -137,6 +142,10 @@ impl ChessGame {
             'b' => Players::Black,
             _ => bail!("Invalid player"),
         };
+
+        if current_player == Players::Black {
+            hash ^= zobrist::BLACK_TO_MOVE;
+        }
 
         let mut state = GameState::default();
 
@@ -313,9 +322,29 @@ impl ChessGame {
                         _ => (),
                     }
                 }
-
                 if piece.piece_type == PieceTypes::Pawn && i8::abs(end.row() - start.row()) == 2 {
-                    state.set_en_passant(start.col());
+                    // Check if there are enemy pawns that could capture en passant
+                    let mut enemy_pawns_exist = false;
+
+                    if end.col() > 0 {
+                        enemy_pawns_exist |= self
+                            .get_position(Position::new_assert(end.row(), end.col() - 1))
+                            .is_some_and(|p| {
+                                p.piece_type == PieceTypes::Pawn && p.owner != piece.owner
+                            });
+                    }
+
+                    if end.col() < 7 {
+                        enemy_pawns_exist |= self
+                            .get_position(Position::new_assert(end.row(), end.col() + 1))
+                            .is_some_and(|p| {
+                                p.piece_type == PieceTypes::Pawn && p.owner != piece.owner
+                            });
+                    }
+
+                    if enemy_pawns_exist {
+                        state.set_en_passant(start.col());
+                    }
                 }
             }
             Move::Promotion {
@@ -849,9 +878,93 @@ impl ChessGame {
 
         s
     }
+
+    pub fn fen(&self) -> String {
+        let mut result = String::new();
+
+        // Add board state
+        for row in (0..8).rev() {
+            let mut empty_count = 0;
+
+            for col in 0..8 {
+                let position = Position::new_assert(row, col);
+                match self.get_position(position) {
+                    None => empty_count += 1,
+                    Some(piece) => {
+                        if empty_count > 0 {
+                            result.push_str(&empty_count.to_string());
+                            empty_count = 0;
+                        }
+                        result.push(piece.as_char_ascii());
+                    }
+                }
+            }
+
+            if empty_count > 0 {
+                result.push_str(&empty_count.to_string());
+            }
+
+            if row > 0 {
+                result.push('/');
+            }
+        }
+
+        // Add current player
+        result.push(' ');
+        result.push(match self.current_player {
+            Players::White => 'w',
+            Players::Black => 'b',
+        });
+
+        // Add castling rights
+        result.push(' ');
+        let state = self.state();
+        let mut has_castling = false;
+
+        if state.white_king_castling() {
+            result.push('K');
+            has_castling = true;
+        }
+        if state.white_queen_castling() {
+            result.push('Q');
+            has_castling = true;
+        }
+        if state.black_king_castling() {
+            result.push('k');
+            has_castling = true;
+        }
+        if state.black_queen_castling() {
+            result.push('q');
+            has_castling = true;
+        }
+        if !has_castling {
+            result.push('-');
+        }
+
+        // Add en passant square
+        result.push(' ');
+        if state.en_passant() < 8 {
+            let row = match self.current_player {
+                Players::White => '6',
+                Players::Black => '3',
+            };
+            result.push((b'a' + state.en_passant() as u8) as char);
+            result.push(row);
+        } else {
+            result.push('-');
+        }
+
+        result
+    }
 }
+
 impl std::fmt::Display for ChessGame {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        writeln!(f)?;
+
+        writeln!(f, "Hash: {:x}", self.hash)?;
+        writeln!(f, "Fen: {}", self.fen())?;
+        writeln!(f, "PGN: {}", self.get_pgn())?;
         writeln!(f)?;
 
         for i in (0..8).rev() {
@@ -869,5 +982,55 @@ impl std::fmt::Display for ChessGame {
             writeln!(f, "|")?;
         }
         writeln!(f, "\n   a b c d e f g h")
+    }
+}
+
+#[cfg(test)]
+
+mod tests {
+    use crate::benchmark::GAME;
+
+    use super::*;
+
+    #[test]
+    fn fen_startpos() {
+        let game = ChessGame::default();
+
+        assert_eq!(
+            game.fen(),
+            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -"
+        );
+    }
+
+    #[test]
+    fn fen_whole_game() {
+        let mut game = ChessGame::default();
+
+        for _move in GAME.split_ascii_whitespace() {
+            let _move = Move::from_uci_notation(_move, &game).unwrap();
+            game.push(_move);
+
+            let fen = game.fen();
+
+            let game2 = ChessGame::new(&fen).unwrap();
+
+            let fen2 = game2.fen();
+
+            assert_eq!(fen, fen2);
+        }
+    }
+
+    #[test]
+    fn check_hashing_consistency() {
+        let mut game = ChessGame::default();
+
+        for _move in GAME.split_ascii_whitespace() {
+            let _move = Move::from_uci_notation(_move, &game).unwrap();
+            game.push(_move);
+
+            let game2 = ChessGame::new(&game.fen()).unwrap();
+
+            assert_eq!(game.hash(), game2.hash());
+        }
     }
 }

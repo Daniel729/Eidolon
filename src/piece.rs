@@ -387,7 +387,7 @@ impl Piece {
         }
     }
 
-    pub fn as_char_ascii(self) -> &'static str {
+    pub fn as_str_pgn(self) -> &'static str {
         match self.piece_type {
             PieceTypes::King => "K",
             PieceTypes::Queen => "Q",
@@ -395,6 +395,22 @@ impl Piece {
             PieceTypes::Bishop => "B",
             PieceTypes::Knight => "N",
             PieceTypes::Pawn => "",
+        }
+    }
+
+    pub fn as_char_ascii(self) -> char {
+        let piece = match self.piece_type {
+            PieceTypes::King => 'K',
+            PieceTypes::Queen => 'Q',
+            PieceTypes::Rook => 'R',
+            PieceTypes::Bishop => 'B',
+            PieceTypes::Knight => 'N',
+            PieceTypes::Pawn => 'P',
+        };
+
+        match self.owner {
+            Players::White => piece,
+            Players::Black => piece.to_ascii_lowercase(),
         }
     }
 

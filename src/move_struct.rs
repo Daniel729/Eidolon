@@ -138,7 +138,7 @@ impl Move {
                 captured_piece,
             } => {
                 let mut s = String::new();
-                s.push_str(piece.as_char_ascii());
+                s.push_str(piece.as_str_pgn());
                 s.push(((start.col()) as u8 + b'a') as char);
                 if captured_piece.is_some() {
                     s.push('x');
