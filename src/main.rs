@@ -3,6 +3,7 @@
 mod autoplay;
 mod benchmark;
 mod chess_game;
+mod constants;
 mod gamestate;
 mod move_struct;
 mod performance_test;

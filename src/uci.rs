@@ -1,15 +1,19 @@
-use std::{io::stdin, time::Duration};
+use std::{collections::HashMap, io::stdin, time::Duration};
 
 use arrayvec::ArrayVec;
+use nohash_hasher::BuildNoHashHasher;
 
 use crate::{
     chess_game::{ChessGame, Players},
+    constants::TT_CAPACITY,
     move_struct::Move,
-    search::get_best_move_in_time,
+    search::{get_best_move_in_time, TranspositionTable},
 };
 
 pub fn uci_talk() {
     let mut game = ChessGame::default();
+    let mut cache: TranspositionTable =
+        HashMap::with_capacity_and_hasher(TT_CAPACITY, BuildNoHashHasher::default());
 
     // Source: https://gist.github.com/DOBRO/2592c6dad754ba67e6dcaec8c90165bf
     'main_loop: for line in stdin().lines() {
@@ -131,10 +135,13 @@ pub fn uci_talk() {
 
                     println!("info time {:?}", time.as_millis());
 
-                    if let Some(best_move) = get_best_move_in_time(&game, time) {
+                    if let Some(best_move) = get_best_move_in_time(&game, time, &mut cache, true) {
                         println!("bestmove {}", best_move.uci_notation());
                         game.push_history(best_move);
                     }
+                }
+                "show" => {
+                    println!("{}", game);
                 }
                 "quit" => {
                     return;

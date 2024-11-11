@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     sync::{
         atomic::{self, AtomicBool},
         Arc,
@@ -8,8 +9,26 @@ use std::{
 };
 
 use arrayvec::ArrayVec;
+use nohash_hasher::BuildNoHashHasher;
 
 use crate::{chess_game::ChessGame, move_struct::Move, piece::Score};
+
+pub type TranspositionTable = HashMap<u64, TableEntry, BuildNoHashHasher<u64>>;
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum NodeType {
+    Exact,
+    LowerBound,
+    UpperBound,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct TableEntry {
+    score: Score,
+    pv: Option<Move>,
+    depth: u8,
+    flag: NodeType,
+}
 
 /// Order:
 ///
@@ -53,7 +72,7 @@ fn move_score(
     }
 }
 
-fn quiescence_search(game: &mut ChessGame, mut alpha: Score, beta: Score) -> Score {
+fn quiescence_search(game: &mut ChessGame, mut alpha: Score, beta: Score, real_depth: u8) -> Score {
     let current_score = game.score * (game.current_player as Score);
     alpha = alpha.max(current_score);
 
@@ -73,7 +92,8 @@ fn quiescence_search(game: &mut ChessGame, mut alpha: Score, beta: Score) -> Sco
             return 0;
         } else {
             // The earlier the mate the worse the score for the losing player
-            return Score::MIN + 100 + game.len() as Score;
+            // This is not a real mate, so it's score reflects that
+            return Score::MIN + 3000 + real_depth as Score;
         }
     }
 
@@ -85,7 +105,7 @@ fn quiescence_search(game: &mut ChessGame, mut alpha: Score, beta: Score) -> Sco
         }
 
         game.push(_move);
-        let score = -quiescence_search(game, -beta, -alpha);
+        let score = -quiescence_search(game, -beta, -alpha, real_depth + 1);
         game.pop(_move);
 
         if score > alpha {
@@ -93,7 +113,7 @@ fn quiescence_search(game: &mut ChessGame, mut alpha: Score, beta: Score) -> Sco
         }
 
         if alpha >= beta {
-            break;
+            return beta;
         }
     }
 
@@ -105,7 +125,12 @@ fn quiescence_search(game: &mut ChessGame, mut alpha: Score, beta: Score) -> Sco
 ///
 /// Explanation: due to the nature of the search tree (exponential growth), the majority
 /// of the time is spent in this function, so it's eliminating unnecessary branches
-fn get_best_move_score_depth_1(game: &mut ChessGame, mut alpha: Score, beta: Score) -> Score {
+fn get_best_move_score_depth_1(
+    game: &mut ChessGame,
+    mut alpha: Score,
+    beta: Score,
+    real_depth: u8,
+) -> Score {
     let player = game.current_player;
     let mut moves = ArrayVec::new();
     game.get_moves(&mut moves, false);
@@ -115,14 +140,15 @@ fn get_best_move_score_depth_1(game: &mut ChessGame, mut alpha: Score, beta: Sco
             return 0;
         } else {
             // The earlier the mate the worse the score for the losing player
-            return Score::MIN + 100 + game.len() as Score;
+            // This is not a real mate, so it's score reflects that
+            return Score::MIN + 2000 + real_depth as Score;
         }
     }
 
     for _move in &moves {
         let _move = *_move;
         game.push(_move);
-        let score = -quiescence_search(game, -beta, -alpha);
+        let score = -quiescence_search(game, -beta, -alpha, real_depth + 1);
         game.pop(_move);
 
         if score > alpha {
@@ -142,27 +168,49 @@ fn get_best_move_score_depth_1(game: &mut ChessGame, mut alpha: Score, beta: Sco
 /// Otherwise returns the best score for the current player
 fn get_best_move_score(
     game: &mut ChessGame,
+    table: &mut TranspositionTable,
     should_stop: &AtomicBool, // Flag to stop the search early
     remaining_depth: u8,      // Moves left to search
     real_depth: u8,           // Moves made since root of the search tree
     mut alpha: Score,
     beta: Score,
     killer_moves: &mut [Option<Move>],
-    pv: &ArrayVec<Move, 32>,
     history: &mut [u16; 64 * 12],
-) -> Option<(Score, ArrayVec<Move, 32>)> {
+) -> Option<Score> {
     if should_stop.load(atomic::Ordering::Relaxed) {
         // Halt the search early
         return None;
     }
 
+    let initial_alpha = alpha;
+
+    let mut pv_move = None;
+
+    if let Some(entry) = table.get(&game.hash()) {
+        if entry.depth >= remaining_depth {
+            match entry.flag {
+                NodeType::Exact => {
+                    return Some(entry.score);
+                }
+                NodeType::LowerBound => {
+                    if entry.score >= beta {
+                        return Some(entry.score);
+                    }
+                }
+                NodeType::UpperBound => {
+                    if entry.score <= alpha {
+                        return Some(entry.score);
+                    }
+                }
+            }
+        }
+        pv_move = entry.pv;
+    }
+
     if remaining_depth == 1 {
-        return Some((
-            get_best_move_score_depth_1(game, alpha, beta),
-            ArrayVec::new(),
-        ));
+        return Some(get_best_move_score_depth_1(game, alpha, beta, real_depth));
     } else if remaining_depth == 0 {
-        return Some((game.score * (game.current_player as Score), ArrayVec::new()));
+        return Some(quiescence_search(game, alpha, beta, real_depth));
     }
 
     let player = game.current_player;
@@ -171,88 +219,78 @@ fn get_best_move_score(
 
     if moves.is_empty() {
         if game.king_exists(player) && !game.is_targeted(game.get_king_position(player), player) {
-            return Some((0, ArrayVec::new()));
+            return Some(0);
         } else {
             // The earlier the mate the worse the score for the losing player
-            return Some((Score::MIN + 100 + game.len() as Score, ArrayVec::new()));
+            return Some(Score::MIN + 100 + real_depth as Score);
         }
     }
 
-    let mut current_pv = ArrayVec::new();
-
     moves.sort_by_cached_key(|a| {
-        move_score(
-            *a,
-            pv.get(real_depth as usize).copied(),
-            killer_moves[real_depth as usize],
-            history,
-        )
+        move_score(*a, pv_move, killer_moves[real_depth as usize], history)
     });
+
+    let mut best_move = None;
+    let mut best_score = Score::MIN;
 
     for (index, _move) in moves.iter().enumerate() {
         let _move = *_move;
 
         if index <= 2 {
             game.push(_move);
-            let (score, mut child_pv) = get_best_move_score(
+            let score = -get_best_move_score(
                 game,
+                table,
                 should_stop,
                 remaining_depth - 1,
                 real_depth + 1,
                 -beta,
                 -alpha,
                 killer_moves,
-                pv,
                 history,
             )?;
-            let score = -score;
             game.pop(_move);
 
-            if score > alpha {
-                alpha = score;
-
-                child_pv.push(_move);
-                current_pv.clear();
-                current_pv.extend(child_pv.iter().copied());
+            if score > best_score {
+                best_score = score;
+                best_move = Some(_move);
             }
+
+            alpha = alpha.max(score);
         } else {
             game.push(_move);
 
-            let (score, _) = get_best_move_score(
+            let test_score = -get_best_move_score(
                 game,
+                table,
                 should_stop,
                 remaining_depth - 1,
                 real_depth + 1,
                 -alpha - 1,
                 -alpha,
                 killer_moves,
-                pv,
                 history,
             )?;
-            let score = -score;
             game.pop(_move);
 
-            if score > alpha {
+            if test_score > best_score {
                 game.push(_move);
-                let (score2, mut child_pv) = get_best_move_score(
+                let score = -get_best_move_score(
                     game,
+                    table,
                     should_stop,
                     remaining_depth - 1,
                     real_depth + 1,
                     -beta,
-                    -score,
+                    -test_score,
                     killer_moves,
-                    pv,
                     history,
                 )?;
-                let score2 = -score2;
                 game.pop(_move);
 
-                alpha = score2;
-
-                child_pv.push(_move);
-                current_pv.clear();
-                current_pv.extend(child_pv.iter().copied());
+                best_move = Some(_move);
+                best_score = score;
+                alpha = alpha.max(score);
             }
         }
 
@@ -267,7 +305,31 @@ fn get_best_move_score(
         }
     }
 
-    Some((alpha, current_pv))
+    let new_entry = TableEntry {
+        score: best_score,
+        pv: best_move,
+        depth: remaining_depth,
+        flag: if best_score <= initial_alpha {
+            NodeType::UpperBound
+        } else if best_score >= beta {
+            NodeType::LowerBound
+        } else {
+            NodeType::Exact
+        },
+    };
+
+    table
+        .entry(game.hash())
+        .and_modify(|entry| {
+            if entry.depth < remaining_depth {
+                *entry = new_entry;
+            } else if entry.depth == remaining_depth && new_entry.flag == NodeType::Exact {
+                *entry = new_entry;
+            }
+        })
+        .or_insert(new_entry);
+
+    Some(alpha)
 }
 
 /// This function is the entry point for the search algorithm
@@ -277,7 +339,7 @@ pub fn get_best_move_entry(
     mut game: ChessGame,
     should_stop: &AtomicBool,
     depth: u8,
-    pv: &mut ArrayVec<Move, 32>,
+    table: &mut TranspositionTable,
     history: &mut [u16; 64 * 12],
 ) -> Option<(Option<Move>, Score, bool)> {
     let mut moves = ArrayVec::new();
@@ -290,7 +352,7 @@ pub fn get_best_move_entry(
 
     let mut killer_moves = [None; 32];
     let mut best_move = None;
-    let mut best_score = -Score::MAX;
+    let mut best_score = Score::MIN + 1;
 
     // Prevent threefold repetition
     if game.move_stack.len() >= 5
@@ -305,91 +367,100 @@ pub fn get_best_move_entry(
             }
         }
     }
+    if let Some(entry) = table.get(&game.hash()) {
+        if entry.depth >= depth && entry.flag == NodeType::Exact {
+            return Some((entry.pv, entry.score, false));
+        }
+    }
 
-    let mut current_pv: ArrayVec<Move, 32> = ArrayVec::new();
-
-    moves.sort_by_cached_key(|a| move_score(*a, pv.first().copied(), None, &history));
+    let pv_move = table.get(&game.hash()).and_then(|entry| entry.pv);
+    moves.sort_by_cached_key(|a| move_score(*a, pv_move, None, &history));
 
     for (index, _move) in moves.iter().enumerate() {
         let _move = *_move;
-        if index <= 1 {
+        if index <= 2 {
             game.push(_move);
-            let (score, mut child_pv) = get_best_move_score(
+            let score = -get_best_move_score(
                 &mut game,
+                table,
                 should_stop,
                 depth - 1,
                 1,
                 Score::MIN + 1,
                 -best_score,
                 &mut killer_moves,
-                pv,
                 history,
             )?;
-            let score = -score;
             game.pop(_move);
 
             if score > best_score {
                 best_score = score;
                 best_move = Some(_move);
-
-                child_pv.push(_move);
-                current_pv.clear();
-                current_pv.extend(child_pv.iter().copied());
             }
         } else {
             game.push(_move);
 
-            let (score, _) = get_best_move_score(
+            let score = -get_best_move_score(
                 &mut game,
+                table,
                 should_stop,
                 depth - 1,
                 1,
                 -best_score - 1,
                 -best_score,
                 &mut killer_moves,
-                pv,
                 history,
             )?;
-            let score = -score;
             game.pop(_move);
 
             if score > best_score {
                 game.push(_move);
-                let (score2, mut child_pv) = get_best_move_score(
+                let score2 = -get_best_move_score(
                     &mut game,
+                    table,
                     should_stop,
                     depth - 1,
                     1,
                     Score::MIN + 1,
                     -score,
                     &mut killer_moves,
-                    pv,
                     history,
                 )?;
-                let score2 = -score2;
                 game.pop(_move);
 
                 best_score = score2;
                 best_move = Some(_move);
-
-                child_pv.push(_move);
-                current_pv.clear();
-                current_pv.extend(child_pv.iter().copied());
             }
         }
     }
 
-    current_pv.reverse();
+    let new_entry = TableEntry {
+        score: best_score,
+        pv: best_move,
+        depth: depth,
+        flag: NodeType::Exact,
+    };
 
-    pv.clear();
-    pv.extend(current_pv.iter().copied());
+    table
+        .entry(game.hash())
+        .and_modify(|entry| {
+            if entry.depth <= depth {
+                *entry = new_entry;
+            }
+        })
+        .or_insert(new_entry);
 
     Some((best_move, best_score, false))
 }
 
 /// This function repeatedly calls get_best_move with increasing depth,
 /// until the time limit is reached, at which point it returns the best move found so far
-pub fn get_best_move_in_time(game: &ChessGame, duration: Duration) -> Option<Move> {
+pub fn get_best_move_in_time(
+    game: &ChessGame,
+    duration: Duration,
+    table: &mut TranspositionTable,
+    log: bool,
+) -> Option<Move> {
     let mut found_move = None;
 
     // Stop searching after the duration has passed
@@ -402,31 +473,54 @@ pub fn get_best_move_in_time(game: &ChessGame, duration: Duration) -> Option<Mov
         }
     });
 
-    let mut pv = ArrayVec::new();
     let mut history = [0; 64 * 12];
 
-    for depth in 2.. {
+    let starting_depth = table
+        .get(&game.hash())
+        .map(|entry| {
+            if entry.flag == NodeType::Exact {
+                entry.depth
+            } else {
+                5
+            }
+        })
+        .unwrap_or(5);
+
+    for depth in starting_depth.. {
         let Some((best_move, best_score, is_only_move)) = get_best_move_entry(
             game.clone(),
             should_stop.as_ref(),
             depth,
-            &mut pv,
+            table,
             &mut history,
         ) else {
             return found_move;
         };
 
-        found_move = best_move;
+        let mut hash = game.hash();
+        let mut game_clone = game.clone();
 
-        println!("info depth {}", depth);
-        println!("info score cp {}", best_score);
-        println!(
-            "info pv {}",
-            pv.iter()
-                .map(|_move| _move.uci_notation())
-                .collect::<Vec<_>>()
-                .join(" ")
-        );
+        found_move = best_move;
+        if log {
+            print!("info pv ");
+            for _ in 0..depth {
+                if let Some(entry) = table.get(&hash) {
+                    if let Some(pv) = entry.pv {
+                        game_clone.push(pv);
+                        print!("{} ", pv.uci_notation());
+                        hash = game_clone.hash();
+                    } else {
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
+            println!();
+            println!("info depth {}", depth);
+            println!("info score cp {}", best_score);
+            println!("info nodes {}", table.len());
+        }
 
         // If mate can be forced, or there is only a single move available, stop searching
         if is_only_move || best_score > Score::MAX - 1000 || best_score < Score::MIN + 1000 {

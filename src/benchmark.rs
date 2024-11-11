@@ -1,8 +1,13 @@
-use arrayvec::ArrayVec;
+use crate::{
+    chess_game::ChessGame,
+    constants::TT_CAPACITY,
+    move_struct::Move,
+    search::{get_best_move_entry, TranspositionTable},
+};
 
-use crate::{chess_game::ChessGame, move_struct::Move, search::get_best_move_entry};
-
-use std::{sync::atomic::AtomicBool, time::Instant};
+use std::{
+    collections::HashMap, hash::BuildHasherDefault, sync::atomic::AtomicBool, time::Instant,
+};
 
 /// Source: https://lichess.org/study/rROPNxQX/NucjwPjN
 ///
@@ -24,12 +29,14 @@ pub fn run_simple_benchmark(depth: u8, steps: u8) {
 
     let atomic_false = AtomicBool::new(false);
 
+    let mut cache: TranspositionTable =
+        HashMap::with_capacity_and_hasher(TT_CAPACITY, BuildHasherDefault::default());
     'outer: loop {
         let now = Instant::now();
 
-        let mut pv = ArrayVec::new();
         let mut history = [0; 64 * 12];
-        get_best_move_entry(game.clone(), &atomic_false, depth, &mut pv, &mut history).unwrap();
+
+        get_best_move_entry(game.clone(), &atomic_false, depth, &mut cache, &mut history).unwrap();
 
         durations.push(now.elapsed());
 
@@ -62,10 +69,11 @@ pub fn run_iterative_benchmark(depth: u8, steps: u8) {
 
     let atomic_false = AtomicBool::new(false);
 
+    let mut cache: TranspositionTable =
+        HashMap::with_capacity_and_hasher(TT_CAPACITY, BuildHasherDefault::default());
     'outer: loop {
         let now = Instant::now();
 
-        let mut pv = ArrayVec::new();
         let mut history = [0; 64 * 12];
 
         for iter_depth in 2..=depth {
@@ -73,7 +81,7 @@ pub fn run_iterative_benchmark(depth: u8, steps: u8) {
                 game.clone(),
                 &atomic_false,
                 iter_depth,
-                &mut pv,
+                &mut cache,
                 &mut history,
             )
             .unwrap();
