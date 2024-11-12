@@ -28,7 +28,7 @@ where
         .unwrap_or(default)
 }
 
-fn main() {
+fn main() -> anyhow::Result<()> {
     let mut args = std::env::args();
     args.next();
 
@@ -78,8 +78,10 @@ fn main() {
             let millis = get_parameter(&mut args, 1000);
             autoplay::autoplay(millis);
         }
+
+        Ok(())
     } else {
         // Enter UCI mode
-        uci::uci_talk();
+        uci::uci_talk()
     }
 }
