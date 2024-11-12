@@ -321,9 +321,9 @@ fn get_best_move_score(
     table
         .entry(game.hash())
         .and_modify(|entry| {
-            if entry.depth < remaining_depth {
-                *entry = new_entry;
-            } else if entry.depth == remaining_depth && new_entry.flag == NodeType::Exact {
+            if entry.depth < remaining_depth
+                || (entry.depth == remaining_depth && new_entry.flag == NodeType::Exact)
+            {
                 *entry = new_entry;
             }
         })
@@ -374,7 +374,7 @@ pub fn get_best_move_entry(
     }
 
     let pv_move = table.get(&game.hash()).and_then(|entry| entry.pv);
-    moves.sort_by_cached_key(|a| move_score(*a, pv_move, None, &history));
+    moves.sort_by_cached_key(|a| move_score(*a, pv_move, None, history));
 
     for (index, _move) in moves.iter().enumerate() {
         let _move = *_move;
@@ -437,7 +437,7 @@ pub fn get_best_move_entry(
     let new_entry = TableEntry {
         score: best_score,
         pv: best_move,
-        depth: depth,
+        depth,
         flag: NodeType::Exact,
     };
 

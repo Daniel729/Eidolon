@@ -651,7 +651,8 @@ impl ChessGame {
             for col in 0..8 {
                 let position = Position::new_assert(row, col);
                 if let Some(piece) = self.get_position(position) {
-                    total_piece_score += piece.score(position, &self.piece_scores).abs() as u32;
+                    total_piece_score +=
+                        piece.score(position, &self.piece_scores).unsigned_abs() as u32;
                 }
             }
         }
