@@ -71,7 +71,7 @@ pub fn uci_talk() -> anyhow::Result<()> {
 }
 
 fn command_uci() {
-    println!("id name daniel_chess");
+    println!("id name rustybait");
     println!("id author Malanca Daniel");
     println!("uciok");
 }
