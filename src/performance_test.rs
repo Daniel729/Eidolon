@@ -12,12 +12,6 @@ pub fn perft(game: &mut ChessGame, depth: u8) -> usize {
     if depth == 0 {
         return 1;
     } else if depth == 1 {
-        for _move in moves.iter() {
-            let _move = *_move;
-            game.push(_move);
-            count += 1;
-            game.pop(_move);
-        }
         return moves.len();
     }
 
