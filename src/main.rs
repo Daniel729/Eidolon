@@ -2,21 +2,15 @@
 
 mod autoplay;
 mod benchmark;
-mod chess_game;
+mod chess;
 mod constants;
-mod gamestate;
-mod move_struct;
 mod performance_test;
-mod piece;
-mod position;
-mod scores;
 mod search;
 mod uci;
-mod zobrist;
 
 use arrayvec::ArrayVec;
-use chess_game::ChessGame;
-use move_struct::Move;
+use chess::move_struct::Move;
+use chess::ChessGame;
 
 fn get_parameter<T>(args: &mut std::env::Args, default: T) -> T
 where

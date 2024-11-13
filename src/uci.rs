@@ -1,15 +1,13 @@
+use crate::{
+    chess::move_struct::Move,
+    chess::{ChessGame, Players},
+    constants::TT_CAPACITY,
+    search::{get_best_move_in_time, TranspositionTable},
+};
 use anyhow::{bail, Context};
 use arrayvec::ArrayVec;
 use nohash_hasher::BuildNoHashHasher;
-
 use std::{collections::HashMap, io::stdin, time::Duration};
-
-use crate::{
-    chess_game::{ChessGame, Players},
-    constants::TT_CAPACITY,
-    move_struct::Move,
-    search::{get_best_move_in_time, TranspositionTable},
-};
 
 struct Data {
     current_game: Option<ChessGame>,

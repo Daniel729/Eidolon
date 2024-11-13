@@ -1,9 +1,9 @@
+use super::move_struct::Move;
+use super::position::Position;
+use super::zobrist;
+use super::Score;
+use super::{ChessGame, Players};
 use std::cell::{Cell, OnceCell};
-
-use crate::chess_game::{ChessGame, Players};
-use crate::move_struct::Move;
-use crate::position::Position;
-use crate::zobrist;
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, PartialOrd, Ord)]
 pub enum PieceTypes {
@@ -20,8 +20,6 @@ pub struct Piece {
     pub piece_type: PieceTypes,
     pub owner: Players,
 }
-
-pub type Score = i16;
 
 impl PieceTypes {
     pub fn material_value(self) -> u8 {

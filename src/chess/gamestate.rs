@@ -1,4 +1,4 @@
-use crate::zobrist;
+use super::zobrist;
 
 /// Information about the state of the game at a moment in time that can't be derived easily
 /// Because of that, we hold it in a stack in the ChessGame struct

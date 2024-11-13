@@ -1,4 +1,5 @@
-use super::*;
+use crate::chess::ChessGame;
+use arrayvec::ArrayVec;
 
 // Documentation and source of correct values for perft: https://www.chessprogramming.org/Perft_Results
 
@@ -34,7 +35,6 @@ pub fn perft(game: &mut ChessGame, depth: u8) -> usize {
 
 mod tests {
     use super::*;
-
     #[test]
     fn perft1_startpos() {
         let mut game = ChessGame::default();

@@ -1,10 +1,9 @@
 use crate::{
-    chess_game::ChessGame,
+    chess::move_struct::Move,
+    chess::ChessGame,
     constants::TT_CAPACITY,
-    move_struct::Move,
     search::{get_best_move_entry, TranspositionTable},
 };
-
 use std::{
     collections::HashMap, hash::BuildHasherDefault, sync::atomic::AtomicBool, time::Instant,
 };

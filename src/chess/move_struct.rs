@@ -1,8 +1,7 @@
+use super::piece::{Piece, PieceTypes};
+use super::position::Position;
+use super::{ChessGame, Players};
 use std::str::FromStr;
-
-use crate::chess_game::{ChessGame, Players};
-use crate::piece::{Piece, PieceTypes};
-use crate::position::Position;
 
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub enum Move {

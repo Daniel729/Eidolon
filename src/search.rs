@@ -1,3 +1,6 @@
+use crate::chess::{move_struct::Move, ChessGame, Score};
+use arrayvec::ArrayVec;
+use nohash_hasher::BuildNoHashHasher;
 use std::{
     collections::HashMap,
     sync::{
@@ -7,11 +10,6 @@ use std::{
     thread,
     time::Duration,
 };
-
-use arrayvec::ArrayVec;
-use nohash_hasher::BuildNoHashHasher;
-
-use crate::{chess_game::ChessGame, move_struct::Move, piece::Score};
 
 pub type TranspositionTable = HashMap<u64, TableEntry, BuildNoHashHasher<u64>>;
 
@@ -86,7 +84,6 @@ fn quiescence_search(game: &mut ChessGame, mut alpha: Score, beta: Score, real_d
     // It is possible for the game to be a stalemate, but be recognized as a checkmate
     // Because we don't validate the king's moves there due to performance reasons
     game.get_moves(&mut moves, false);
-
     if moves.is_empty() {
         if game.king_exists(player) && !game.is_targeted(game.get_king_position(player), player) {
             return 0;

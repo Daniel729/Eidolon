@@ -1,13 +1,11 @@
-use std::{collections::HashMap, time::Duration};
-
-use arrayvec::ArrayVec;
-use nohash_hasher::BuildNoHashHasher;
-
 use crate::{
-    chess_game::ChessGame,
+    chess::ChessGame,
     constants::TT_CAPACITY,
     search::{get_best_move_in_time, TranspositionTable},
 };
+use arrayvec::ArrayVec;
+use nohash_hasher::BuildNoHashHasher;
+use std::{collections::HashMap, time::Duration};
 
 pub fn autoplay(millis: u64) {
     let mut game = ChessGame::default();

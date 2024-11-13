@@ -1,15 +1,22 @@
-use std::cell::Cell;
+pub mod move_struct;
+pub mod zobrist;
+
+mod gamestate;
+mod piece;
+mod position;
+mod scores;
 
 use anyhow::{bail, Context};
 use arrayvec::ArrayVec;
+use gamestate::GameState;
+use move_struct::Move;
+use piece::{Piece, PieceTypes};
+use position::Position;
+use scores::ENDGAME_THRESHOLD;
 use seq_macro::seq;
+use std::cell::Cell;
 
-use crate::gamestate::GameState;
-use crate::move_struct::Move;
-use crate::piece::{Piece, PieceTypes, Score};
-use crate::position::Position;
-use crate::scores::{self, ENDGAME_THRESHOLD};
-use crate::zobrist;
+pub type Score = i16;
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum GamePhase {
@@ -675,7 +682,6 @@ impl ChessGame {
     /// `moves` will be cleared by this function to be sure it has room for all moves
     pub fn get_moves(&mut self, moves: &mut ArrayVec<Move, 256>, verify_king: bool) {
         moves.clear();
-
         if !self.king_exists(self.current_player) {
             // no available moves;
             return;
@@ -989,10 +995,8 @@ impl std::fmt::Display for ChessGame {
 #[cfg(test)]
 
 mod tests {
-    use crate::benchmark::GAME;
-
     use super::*;
-
+    use crate::benchmark::GAME;
     #[test]
     fn fen_startpos() {
         let game = ChessGame::default();

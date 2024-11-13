@@ -2,6 +2,7 @@
 /// This struct should always contain a valid position.
 /// That is, values for row and col are always in 0..8
 pub struct Position(i8, i8);
+
 impl Position {
     pub const WHITE_QUEEN_ROOK: Self = Self(0, 0);
     pub const WHITE_KING_ROOK: Self = Self(0, 7);
