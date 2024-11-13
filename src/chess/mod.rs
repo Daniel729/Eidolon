@@ -32,11 +32,11 @@ pub enum Players {
 }
 
 #[derive(Clone)]
-pub struct ChessGame {
-    pub score: Score,
-    pub current_player: Players,
-    pub move_stack: Vec<Move>,
-    pub phase: GamePhase,
+pub struct Game {
+    score: Score,
+    current_player: Players,
+    move_stack: Vec<Move>,
+    phase: GamePhase,
     hash: u64,
     board: [Option<Piece>; 64],
     past_scores: [Score; 64],
@@ -59,13 +59,13 @@ impl Players {
     }
 }
 
-impl Default for ChessGame {
+impl Default for Game {
     fn default() -> Self {
-        ChessGame::new("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap()
+        Game::new("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap()
     }
 }
 
-impl ChessGame {
+impl Game {
     pub fn new(fen: &str) -> anyhow::Result<Self> {
         let mut terms = fen.split_ascii_whitespace();
 
@@ -220,9 +220,26 @@ impl ChessGame {
         self.hash
     }
 
+    pub fn player(&self) -> Players {
+        self.current_player
+    }
+
+    pub fn score(&self) -> Score {
+        self.score
+    }
+
+    pub fn move_stack(&self) -> &[Move] {
+        &self.move_stack
+    }
+
     pub fn get_position(&self, position: Position) -> Option<Piece> {
         // SAFETY: position is always valid
         unsafe { *self.board.get_unchecked(position.as_usize()) }
+    }
+
+    pub fn state(&self) -> GameState {
+        // SAFETY: There should always be a valid state
+        unsafe { *self.state.last().unwrap_unchecked() }
     }
 
     fn set_position(&mut self, position: Position, new_place: Option<Piece>) {
@@ -263,11 +280,6 @@ impl ChessGame {
             Players::White => self.king_positions[0] = position,
             Players::Black => self.king_positions[1] = position,
         }
-    }
-
-    pub fn state(&self) -> GameState {
-        // SAFETY: There should always be a valid state
-        unsafe { *self.state.last().unwrap_unchecked() }
     }
 
     pub fn push_history(&mut self, _move: Move) {
@@ -965,7 +977,7 @@ impl ChessGame {
     }
 }
 
-impl std::fmt::Display for ChessGame {
+impl std::fmt::Display for Game {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         writeln!(f)?;
 
@@ -999,7 +1011,7 @@ mod tests {
     use crate::benchmark::GAME;
     #[test]
     fn fen_startpos() {
-        let game = ChessGame::default();
+        let game = Game::default();
 
         assert_eq!(
             game.fen(),
@@ -1009,7 +1021,7 @@ mod tests {
 
     #[test]
     fn fen_whole_game() {
-        let mut game = ChessGame::default();
+        let mut game = Game::default();
 
         for _move in GAME.split_ascii_whitespace() {
             let _move = Move::from_uci_notation(_move, &game).unwrap();
@@ -1017,7 +1029,7 @@ mod tests {
 
             let fen = game.fen();
 
-            let game2 = ChessGame::new(&fen).unwrap();
+            let game2 = Game::new(&fen).unwrap();
 
             let fen2 = game2.fen();
 
@@ -1027,7 +1039,7 @@ mod tests {
 
     #[test]
     fn fen_en_passant() {
-        let mut game = ChessGame::default();
+        let mut game = Game::default();
 
         let _move = Move::from_uci_notation("e2e4", &game).unwrap();
         game.push(_move);
@@ -1046,7 +1058,7 @@ mod tests {
 
         let fen = game.fen();
 
-        let game2 = ChessGame::new(&fen).unwrap();
+        let game2 = Game::new(&fen).unwrap();
 
         let fen2 = game2.fen();
 
@@ -1055,13 +1067,13 @@ mod tests {
 
     #[test]
     fn check_hashing_consistency() {
-        let mut game = ChessGame::default();
+        let mut game = Game::default();
 
         for _move in GAME.split_ascii_whitespace() {
             let _move = Move::from_uci_notation(_move, &game).unwrap();
             game.push(_move);
 
-            let game2 = ChessGame::new(&game.fen()).unwrap();
+            let game2 = Game::new(&game.fen()).unwrap();
 
             assert_eq!(game.hash(), game2.hash());
         }

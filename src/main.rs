@@ -10,7 +10,7 @@ mod uci;
 
 use arrayvec::ArrayVec;
 use chess::move_struct::Move;
-use chess::ChessGame;
+use chess::Game;
 
 fn get_parameter<T>(args: &mut std::env::Args, default: T) -> T
 where
@@ -45,7 +45,7 @@ fn main() -> anyhow::Result<()> {
             // Generate perft test result
             let depth = get_parameter(&mut args, 7);
             let fen = args.next().unwrap_or_default();
-            let mut game = ChessGame::new(&fen).unwrap_or_default();
+            let mut game = Game::new(&fen).unwrap_or_default();
             while let Some(move_str) = &args.next() {
                 let _move = Move::from_uci_notation(move_str, &game).unwrap();
                 game.push(_move);

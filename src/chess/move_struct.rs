@@ -1,6 +1,6 @@
 use super::piece::{Piece, PieceTypes};
 use super::position::Position;
-use super::{ChessGame, Players};
+use super::{Game, Players};
 use std::str::FromStr;
 
 #[derive(PartialEq, Eq, Clone, Copy)]
@@ -188,7 +188,7 @@ impl Move {
         }
     }
 
-    pub fn from_uci_notation(s: &str, game: &ChessGame) -> Option<Self> {
+    pub fn from_uci_notation(s: &str, game: &Game) -> Option<Self> {
         if s == "e1g1" && game.get_king_position(Players::White) == Position::new_assert(0, 4) {
             Some(Self::CastlingShort {
                 owner: Players::White,

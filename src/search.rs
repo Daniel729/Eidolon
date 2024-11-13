@@ -1,4 +1,4 @@
-use crate::chess::{move_struct::Move, ChessGame, Score};
+use crate::chess::{move_struct::Move, Game, Score};
 use arrayvec::ArrayVec;
 use nohash_hasher::BuildNoHashHasher;
 use std::{
@@ -70,15 +70,15 @@ fn move_score(
     }
 }
 
-fn quiescence_search(game: &mut ChessGame, mut alpha: Score, beta: Score, real_depth: u8) -> Score {
-    let current_score = game.score * (game.current_player as Score);
+fn quiescence_search(game: &mut Game, mut alpha: Score, beta: Score, real_depth: u8) -> Score {
+    let current_score = game.score() * (game.player() as Score);
     alpha = alpha.max(current_score);
 
     if alpha >= beta {
         return beta;
     }
 
-    let player = game.current_player;
+    let player = game.player();
     let mut moves = ArrayVec::new();
 
     // It is possible for the game to be a stalemate, but be recognized as a checkmate
@@ -123,12 +123,12 @@ fn quiescence_search(game: &mut ChessGame, mut alpha: Score, beta: Score, real_d
 /// Explanation: due to the nature of the search tree (exponential growth), the majority
 /// of the time is spent in this function, so it's eliminating unnecessary branches
 fn get_best_move_score_depth_1(
-    game: &mut ChessGame,
+    game: &mut Game,
     mut alpha: Score,
     beta: Score,
     real_depth: u8,
 ) -> Score {
-    let player = game.current_player;
+    let player = game.player();
     let mut moves = ArrayVec::new();
     game.get_moves(&mut moves, false);
 
@@ -164,7 +164,7 @@ fn get_best_move_score_depth_1(
 /// It halts early and returns None if the should_stop flag is set
 /// Otherwise returns the best score for the current player
 fn get_best_move_score(
-    game: &mut ChessGame,
+    game: &mut Game,
     table: &mut TranspositionTable,
     should_stop: &AtomicBool, // Flag to stop the search early
     remaining_depth: u8,      // Moves left to search
@@ -210,7 +210,7 @@ fn get_best_move_score(
         return Some(quiescence_search(game, alpha, beta, real_depth));
     }
 
-    let player = game.current_player;
+    let player = game.player();
     let mut moves = ArrayVec::new();
     game.get_moves(&mut moves, true);
 
@@ -333,7 +333,7 @@ fn get_best_move_score(
 /// It returns the best move, the score of the best move
 /// and a flag indicating if there is only one move available
 pub fn get_best_move_entry(
-    mut game: ChessGame,
+    mut game: Game,
     should_stop: &AtomicBool,
     depth: u8,
     table: &mut TranspositionTable,
@@ -352,10 +352,11 @@ pub fn get_best_move_entry(
     let mut best_score = Score::MIN + 1;
 
     // Prevent threefold repetition
-    if game.move_stack.len() >= 5
-        && game.move_stack[game.move_stack.len() - 1] == game.move_stack[game.move_stack.len() - 5]
+    if game.move_stack().len() >= 5
+        && game.move_stack()[game.move_stack().len() - 1]
+            == game.move_stack()[game.move_stack().len() - 5]
     {
-        let repetition_move = game.move_stack[game.move_stack.len() - 4];
+        let repetition_move = game.move_stack()[game.move_stack().len() - 4];
 
         for (index, _move) in moves.iter().enumerate() {
             if repetition_move == *_move {
@@ -453,7 +454,7 @@ pub fn get_best_move_entry(
 /// This function repeatedly calls get_best_move with increasing depth,
 /// until the time limit is reached, at which point it returns the best move found so far
 pub fn get_best_move_in_time(
-    game: &ChessGame,
+    game: &Game,
     duration: Duration,
     table: &mut TranspositionTable,
     log: bool,

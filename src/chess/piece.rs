@@ -2,7 +2,7 @@ use super::move_struct::Move;
 use super::position::Position;
 use super::zobrist;
 use super::Score;
-use super::{ChessGame, Players};
+use super::{Game, Players};
 use std::cell::{Cell, OnceCell};
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, PartialOrd, Ord)]
@@ -76,7 +76,7 @@ impl Piece {
         }
     }
 
-    pub fn get_moves(self, mut push: impl FnMut(Move), game: &ChessGame, pos: Position) {
+    pub fn get_moves(self, mut push: impl FnMut(Move), game: &Game, pos: Position) {
         macro_rules! search_deltas {
             ( $( $deltas:expr ),* ) => { $ (
                 for delta in $deltas {
@@ -140,7 +140,7 @@ impl Piece {
         }
     }
 
-    fn get_pawn_moves(self, mut push: impl FnMut(Move), game: &ChessGame, pos: Position) {
+    fn get_pawn_moves(self, mut push: impl FnMut(Move), game: &Game, pos: Position) {
         let first_row = match self.owner {
             Players::White => 1,
             Players::Black => 6,
@@ -263,7 +263,7 @@ impl Piece {
         }
     }
 
-    fn get_king_moves(self, mut push: impl FnMut(Move), game: &ChessGame, pos: Position) {
+    fn get_king_moves(self, mut push: impl FnMut(Move), game: &Game, pos: Position) {
         let other_king_pos = game.get_king_position(game.current_player.the_other());
         for delta in [
             (0, 1),
@@ -339,7 +339,7 @@ impl Piece {
         }
     }
 
-    fn get_knight_moves(self, mut push: impl FnMut(Move), game: &ChessGame, pos: Position) {
+    fn get_knight_moves(self, mut push: impl FnMut(Move), game: &Game, pos: Position) {
         for delta in [
             (1, 2),
             (2, 1),

@@ -1,6 +1,6 @@
 use crate::{
     chess::move_struct::Move,
-    chess::{ChessGame, Players},
+    chess::{Game, Players},
     constants::TT_CAPACITY,
     search::{get_best_move_in_time, TranspositionTable},
 };
@@ -10,7 +10,7 @@ use nohash_hasher::BuildNoHashHasher;
 use std::{collections::HashMap, io::stdin, time::Duration};
 
 struct Data {
-    current_game: Option<ChessGame>,
+    current_game: Option<Game>,
     cache: TranspositionTable,
 }
 
@@ -132,7 +132,7 @@ fn command_go(
         let black_time =
             (btime as f64 * FRACTION_OF_TOTAL_TIME) as u64 + binc - LATENCY_MS_COMPENSATE;
 
-        time = if game.current_player == Players::White {
+        time = if game.player() == Players::White {
             Some(Duration::from_millis(white_time))
         } else {
             Some(Duration::from_millis(black_time))
@@ -164,7 +164,7 @@ fn command_position(
     if let Some(term) = terms.next() {
         match term {
             "startpos" => {
-                data.current_game = Some(ChessGame::default());
+                data.current_game = Some(Game::default());
                 let game = data.current_game.as_mut().unwrap();
                 if let Some(term) = terms.next() {
                     if term == "moves" {
@@ -198,7 +198,7 @@ fn command_position(
                     .flat_map(|term| [term, " "].into_iter())
                     .collect();
 
-                let game = match ChessGame::new(&fen) {
+                let game = match Game::new(&fen) {
                     Ok(fen_game) => {
                         data.current_game = Some(fen_game);
                         data.current_game.as_mut().unwrap()

@@ -1,6 +1,6 @@
 use crate::{
     chess::move_struct::Move,
-    chess::ChessGame,
+    chess::Game,
     constants::TT_CAPACITY,
     search::{get_best_move_entry, TranspositionTable},
 };
@@ -23,7 +23,7 @@ pub const GAME: &str = "g1f3 g8f6 c2c4 g7g6 b1c3 f8g7 d2d4 e8g8 c1f4 d7d5 d1b3 d
 pub fn run_simple_benchmark(depth: u8, steps: u8) {
     let mut moves = GAME.split_ascii_whitespace();
 
-    let mut game = ChessGame::default();
+    let mut game = Game::default();
     let mut durations = vec![];
 
     let atomic_false = AtomicBool::new(false);
@@ -63,7 +63,7 @@ Geometric Mean: {:.2} ms",
 pub fn run_iterative_benchmark(depth: u8, steps: u8) {
     let mut moves = GAME.split_ascii_whitespace();
 
-    let mut game = ChessGame::default();
+    let mut game = Game::default();
     let mut durations = vec![];
 
     let atomic_false = AtomicBool::new(false);
