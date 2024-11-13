@@ -1022,6 +1022,34 @@ mod tests {
     }
 
     #[test]
+    fn fen_en_passant() {
+        let mut game = ChessGame::default();
+
+        let _move = Move::from_uci_notation("e2e4", &game).unwrap();
+        game.push(_move);
+
+        let _move = Move::from_uci_notation("a7a5", &game).unwrap();
+        game.push(_move);
+
+        let _move = Move::from_uci_notation("e4e5", &game).unwrap();
+        game.push(_move);
+
+        let _move = Move::from_uci_notation("d7d5", &game).unwrap();
+        game.push(_move);
+
+        let _move = Move::from_uci_notation("e5d6", &game).unwrap();
+        game.push(_move);
+
+        let fen = game.fen();
+
+        let game2 = ChessGame::new(&fen).unwrap();
+
+        let fen2 = game2.fen();
+
+        assert_eq!(fen, fen2);
+    }
+
+    #[test]
     fn check_hashing_consistency() {
         let mut game = ChessGame::default();
 
