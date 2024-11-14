@@ -10,7 +10,7 @@ use anyhow::{bail, Context};
 use arrayvec::ArrayVec;
 use gamestate::GameState;
 use move_struct::Move;
-use piece::{Piece, PieceTypes};
+use piece::{Piece, PieceType};
 use position::Position;
 use scores::ENDGAME_THRESHOLD;
 use seq_macro::seq;
@@ -26,7 +26,7 @@ pub enum GamePhase {
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
-pub enum Players {
+pub enum Player {
     White = 1,
     Black = -1,
 }
@@ -34,7 +34,7 @@ pub enum Players {
 #[derive(Clone)]
 pub struct Game {
     score: Score,
-    current_player: Players,
+    current_player: Player,
     move_stack: Vec<Move>,
     phase: GamePhase,
     hash: u64,
@@ -50,7 +50,7 @@ pub struct Game {
     state: ArrayVec<GameState, 512>,
 }
 
-impl Players {
+impl Player {
     pub fn the_other(&self) -> Self {
         match self {
             Self::White => Self::Black,
@@ -107,10 +107,10 @@ impl Game {
                         bail!("Too many columns");
                     }
                     let piece = Piece::from_char_ascii(piece).with_context(|| "Invalid piece")?;
-                    if piece.piece_type == PieceTypes::King {
+                    if piece.piece_type == PieceType::King {
                         match piece.owner {
-                            Players::White => white_king_pos = Some(Position::new_assert(row, col)),
-                            Players::Black => black_king_pos = Some(Position::new_assert(row, col)),
+                            Player::White => white_king_pos = Some(Position::new_assert(row, col)),
+                            Player::Black => black_king_pos = Some(Position::new_assert(row, col)),
                         }
                     }
                     let position = Position::new_assert(row, col);
@@ -145,12 +145,12 @@ impl Game {
         };
 
         let current_player = match next_player.chars().next().unwrap() {
-            'w' => Players::White,
-            'b' => Players::Black,
+            'w' => Player::White,
+            'b' => Player::Black,
             _ => bail!("Invalid player"),
         };
 
-        if current_player == Players::Black {
+        if current_player == Player::Black {
             hash ^= zobrist::BLACK_TO_MOVE;
         }
 
@@ -220,7 +220,7 @@ impl Game {
         self.hash
     }
 
-    pub fn player(&self) -> Players {
+    pub fn player(&self) -> Player {
         self.current_player
     }
 
@@ -268,17 +268,17 @@ impl Game {
         self.score += *place_score;
     }
 
-    pub fn get_king_position(&self, player: Players) -> Position {
+    pub fn get_king_position(&self, player: Player) -> Position {
         match player {
-            Players::White => self.king_positions[0],
-            Players::Black => self.king_positions[1],
+            Player::White => self.king_positions[0],
+            Player::Black => self.king_positions[1],
         }
     }
 
-    fn set_king_position(&mut self, player: Players, position: Position) {
+    fn set_king_position(&mut self, player: Player, position: Position) {
         match player {
-            Players::White => self.king_positions[0] = position,
-            Players::Black => self.king_positions[1] = position,
+            Player::White => self.king_positions[0] = position,
+            Player::Black => self.king_positions[1] = position,
         }
     }
 
@@ -301,19 +301,19 @@ impl Game {
                 self.set_position(start, None);
                 self.set_position(end, Some(piece));
 
-                if piece.piece_type == PieceTypes::King {
+                if piece.piece_type == PieceType::King {
                     self.set_king_position(self.current_player, end);
                     match self.current_player {
-                        Players::White => {
+                        Player::White => {
                             state.set_white_king_castling_false();
                             state.set_white_queen_castling_false();
                         }
-                        Players::Black => {
+                        Player::Black => {
                             state.set_black_king_castling_false();
                             state.set_black_queen_castling_false();
                         }
                     }
-                } else if piece.piece_type == PieceTypes::Rook {
+                } else if piece.piece_type == PieceType::Rook {
                     match start {
                         Position::WHITE_QUEEN_ROOK => state.set_white_queen_castling_false(),
                         Position::WHITE_KING_ROOK => state.set_white_king_castling_false(),
@@ -324,7 +324,7 @@ impl Game {
                 }
 
                 if captured_piece.is_some_and(|piece| {
-                    piece.piece_type == PieceTypes::Rook && piece.owner == Players::White
+                    piece.piece_type == PieceType::Rook && piece.owner == Player::White
                 }) {
                     match end {
                         Position::WHITE_QUEEN_ROOK => state.set_white_queen_castling_false(),
@@ -333,7 +333,7 @@ impl Game {
                     }
                 }
                 if captured_piece.is_some_and(|piece| {
-                    piece.piece_type == PieceTypes::Rook && piece.owner == Players::Black
+                    piece.piece_type == PieceType::Rook && piece.owner == Player::Black
                 }) {
                     match end {
                         Position::BLACK_QUEEN_ROOK => state.set_black_queen_castling_false(),
@@ -341,7 +341,7 @@ impl Game {
                         _ => (),
                     }
                 }
-                if piece.piece_type == PieceTypes::Pawn && i8::abs(end.row() - start.row()) == 2 {
+                if piece.piece_type == PieceType::Pawn && i8::abs(end.row() - start.row()) == 2 {
                     // Check if there are enemy pawns that could capture en passant
                     let mut enemy_pawns_exist = false;
 
@@ -349,7 +349,7 @@ impl Game {
                         enemy_pawns_exist |= self
                             .get_position(Position::new_assert(end.row(), end.col() - 1))
                             .is_some_and(|p| {
-                                p.piece_type == PieceTypes::Pawn && p.owner != piece.owner
+                                p.piece_type == PieceType::Pawn && p.owner != piece.owner
                             });
                     }
 
@@ -357,7 +357,7 @@ impl Game {
                         enemy_pawns_exist |= self
                             .get_position(Position::new_assert(end.row(), end.col() + 1))
                             .is_some_and(|p| {
-                                p.piece_type == PieceTypes::Pawn && p.owner != piece.owner
+                                p.piece_type == PieceType::Pawn && p.owner != piece.owner
                             });
                     }
 
@@ -383,7 +383,7 @@ impl Game {
                 );
 
                 if captured_piece.is_some_and(|piece| {
-                    piece.piece_type == PieceTypes::Rook && piece.owner == Players::White
+                    piece.piece_type == PieceType::Rook && piece.owner == Player::White
                 }) {
                     match end {
                         Position::WHITE_QUEEN_ROOK => state.set_white_queen_castling_false(),
@@ -392,7 +392,7 @@ impl Game {
                     }
                 }
                 if captured_piece.is_some_and(|piece| {
-                    piece.piece_type == PieceTypes::Rook && piece.owner == Players::Black
+                    piece.piece_type == PieceType::Rook && piece.owner == Player::Black
                 }) {
                     match end {
                         Position::BLACK_QUEEN_ROOK => state.set_black_queen_castling_false(),
@@ -407,12 +407,12 @@ impl Game {
                 end_col,
             } => {
                 let (old_pawn, new_pawn, taken_pawn) = match owner {
-                    Players::White => (
+                    Player::White => (
                         Position::new_assert(4, start_col),
                         Position::new_assert(5, end_col),
                         Position::new_assert(4, end_col),
                     ),
-                    Players::Black => (
+                    Player::Black => (
                         Position::new_assert(3, start_col),
                         Position::new_assert(2, end_col),
                         Position::new_assert(3, end_col),
@@ -423,15 +423,15 @@ impl Game {
                 self.set_position(
                     new_pawn,
                     Some(Piece {
-                        piece_type: PieceTypes::Pawn,
+                        piece_type: PieceType::Pawn,
                         owner,
                     }),
                 );
             }
             Move::CastlingLong { owner } => {
                 let row = match owner {
-                    Players::White => 0,
-                    Players::Black => 7,
+                    Player::White => 0,
+                    Player::Black => 7,
                 };
                 let (old_king, new_king, old_rook, new_rook) = (
                     Position::new_assert(row, 4),
@@ -445,7 +445,7 @@ impl Game {
                 self.set_position(
                     new_rook,
                     Some(Piece {
-                        piece_type: PieceTypes::Rook,
+                        piece_type: PieceType::Rook,
                         owner,
                     }),
                 );
@@ -453,17 +453,17 @@ impl Game {
                 self.set_position(
                     new_king,
                     Some(Piece {
-                        piece_type: PieceTypes::King,
+                        piece_type: PieceType::King,
                         owner,
                     }),
                 );
                 self.set_king_position(self.current_player, new_king);
                 match self.current_player {
-                    Players::White => {
+                    Player::White => {
                         state.set_white_king_castling_false();
                         state.set_white_queen_castling_false();
                     }
-                    Players::Black => {
+                    Player::Black => {
                         state.set_black_king_castling_false();
                         state.set_black_queen_castling_false();
                     }
@@ -471,8 +471,8 @@ impl Game {
             }
             Move::CastlingShort { owner } => {
                 let row = match owner {
-                    Players::White => 0,
-                    Players::Black => 7,
+                    Player::White => 0,
+                    Player::Black => 7,
                 };
                 let (old_king, new_king, old_rook, new_rook) = (
                     Position::new_assert(row, 4),
@@ -486,7 +486,7 @@ impl Game {
                 self.set_position(
                     new_rook,
                     Some(Piece {
-                        piece_type: PieceTypes::Rook,
+                        piece_type: PieceType::Rook,
                         owner,
                     }),
                 );
@@ -494,18 +494,18 @@ impl Game {
                 self.set_position(
                     new_king,
                     Some(Piece {
-                        piece_type: PieceTypes::King,
+                        piece_type: PieceType::King,
                         owner,
                     }),
                 );
 
                 self.set_king_position(self.current_player, new_king);
                 match self.current_player {
-                    Players::White => {
+                    Player::White => {
                         state.set_white_king_castling_false();
                         state.set_white_queen_castling_false();
                     }
-                    Players::Black => {
+                    Player::Black => {
                         state.set_black_king_castling_false();
                         state.set_black_queen_castling_false();
                     }
@@ -542,7 +542,7 @@ impl Game {
                 self.set_position(start, Some(piece));
                 self.set_position(end, captured_piece);
 
-                if piece.piece_type == PieceTypes::King {
+                if piece.piece_type == PieceType::King {
                     self.set_king_position(self.current_player, start);
                 }
             }
@@ -556,7 +556,7 @@ impl Game {
                 self.set_position(
                     start,
                     Some(Piece {
-                        piece_type: PieceTypes::Pawn,
+                        piece_type: PieceType::Pawn,
                         owner,
                     }),
                 );
@@ -568,12 +568,12 @@ impl Game {
                 end_col,
             } => {
                 let (old_pawn, new_pawn, taken_pawn) = match owner {
-                    Players::White => (
+                    Player::White => (
                         Position::new_assert(4, start_col),
                         Position::new_assert(5, end_col),
                         Position::new_assert(4, end_col),
                     ),
-                    Players::Black => (
+                    Player::Black => (
                         Position::new_assert(3, start_col),
                         Position::new_assert(2, end_col),
                         Position::new_assert(3, end_col),
@@ -584,22 +584,22 @@ impl Game {
                 self.set_position(
                     taken_pawn,
                     Some(Piece {
-                        piece_type: PieceTypes::Pawn,
+                        piece_type: PieceType::Pawn,
                         owner: owner.the_other(),
                     }),
                 );
                 self.set_position(
                     old_pawn,
                     Some(Piece {
-                        piece_type: PieceTypes::Pawn,
+                        piece_type: PieceType::Pawn,
                         owner,
                     }),
                 );
             }
             Move::CastlingLong { owner } => {
                 let row = match owner {
-                    Players::White => 0,
-                    Players::Black => 7,
+                    Player::White => 0,
+                    Player::Black => 7,
                 };
                 let (old_king, new_king, old_rook, new_rook) = (
                     Position::new_assert(row, 4),
@@ -613,7 +613,7 @@ impl Game {
                 self.set_position(
                     old_rook,
                     Some(Piece {
-                        piece_type: PieceTypes::Rook,
+                        piece_type: PieceType::Rook,
                         owner,
                     }),
                 );
@@ -621,7 +621,7 @@ impl Game {
                 self.set_position(
                     old_king,
                     Some(Piece {
-                        piece_type: PieceTypes::King,
+                        piece_type: PieceType::King,
                         owner,
                     }),
                 );
@@ -630,8 +630,8 @@ impl Game {
             }
             Move::CastlingShort { owner } => {
                 let row = match owner {
-                    Players::White => 0,
-                    Players::Black => 7,
+                    Player::White => 0,
+                    Player::Black => 7,
                 };
                 let (old_king, new_king, old_rook, new_rook) = (
                     Position::new_assert(row, 4),
@@ -645,7 +645,7 @@ impl Game {
                 self.set_position(
                     old_rook,
                     Some(Piece {
-                        piece_type: PieceTypes::Rook,
+                        piece_type: PieceType::Rook,
                         owner,
                     }),
                 );
@@ -653,7 +653,7 @@ impl Game {
                 self.set_position(
                     old_king,
                     Some(Piece {
-                        piece_type: PieceTypes::King,
+                        piece_type: PieceType::King,
                         owner,
                     }),
                 );
@@ -681,14 +681,14 @@ impl Game {
 
     pub fn update_phase(&mut self) {
         if self.is_endgame() {
-            self.piece_scores[PieceTypes::King as usize].set(&scores::KING_SCORES_END);
+            self.piece_scores[PieceType::King as usize].set(&scores::KING_SCORES_END);
             self.phase = GamePhase::Endgame;
         }
     }
 
-    pub fn king_exists(&self, player: Players) -> bool {
+    pub fn king_exists(&self, player: Player) -> bool {
         self.get_position(self.get_king_position(player))
-            .is_some_and(|piece| piece.piece_type == PieceTypes::King)
+            .is_some_and(|piece| piece.piece_type == PieceType::King)
     }
 
     /// `moves` will be cleared by this function to be sure it has room for all moves
@@ -759,7 +759,7 @@ impl Game {
     /// Thus I considered it unnecessary to verify if the square is targeted by a king,
     /// since I already verify that moves don't put kings near each other and a king blocking
     /// a castling move is so unlikely I don't want to waste time on it.
-    pub fn is_targeted(&self, position: Position, player: Players) -> bool {
+    pub fn is_targeted(&self, position: Position, player: Player) -> bool {
         // Verifiy for kings
         for delta in [
             (1, 0),
@@ -773,7 +773,7 @@ impl Game {
         ] {
             if let Some(new_pos) = position.add(delta) {
                 if self.get_position(new_pos).is_some_and(|piece| {
-                    piece.owner != player && piece.piece_type == PieceTypes::King
+                    piece.owner != player && piece.piece_type == PieceType::King
                 }) {
                     return true;
                 }
@@ -793,7 +793,7 @@ impl Game {
         ] {
             if let Some(new_pos) = position.add(delta) {
                 if self.get_position(new_pos).is_some_and(|piece| {
-                    piece.owner != player && piece.piece_type == PieceTypes::Knight
+                    piece.owner != player && piece.piece_type == PieceType::Knight
                 }) {
                     return true;
                 }
@@ -802,33 +802,33 @@ impl Game {
 
         // Verify for pawns
         match player {
-            Players::White => {
+            Player::White => {
                 if let Some(new_pos) = position.add((1, 1)) {
                     if self.get_position(new_pos).is_some_and(|piece| {
-                        piece.owner != player && piece.piece_type == PieceTypes::Pawn
+                        piece.owner != player && piece.piece_type == PieceType::Pawn
                     }) {
                         return true;
                     }
                 }
                 if let Some(new_pos) = position.add((1, -1)) {
                     if self.get_position(new_pos).is_some_and(|piece| {
-                        piece.owner != player && piece.piece_type == PieceTypes::Pawn
+                        piece.owner != player && piece.piece_type == PieceType::Pawn
                     }) {
                         return true;
                     }
                 }
             }
-            Players::Black => {
+            Player::Black => {
                 if let Some(new_pos) = position.add((-1, 1)) {
                     if self.get_position(new_pos).is_some_and(|piece| {
-                        piece.owner != player && piece.piece_type == PieceTypes::Pawn
+                        piece.owner != player && piece.piece_type == PieceType::Pawn
                     }) {
                         return true;
                     }
                 }
                 if let Some(new_pos) = position.add((-1, -1)) {
                     if self.get_position(new_pos).is_some_and(|piece| {
-                        piece.owner != player && piece.piece_type == PieceTypes::Pawn
+                        piece.owner != player && piece.piece_type == PieceType::Pawn
                     }) {
                         return true;
                     }
@@ -859,8 +859,8 @@ impl Game {
 
         // Verify lines for rooks/queens
         search_enemies_loops![
-            PieceTypes::Rook,
-            PieceTypes::Queen,
+            PieceType::Rook,
+            PieceType::Queen,
             (1..).map(|x| (0, x)),
             (1..).map(|x| (0, -x)),
             (1..).map(|x| (x, 0)),
@@ -869,8 +869,8 @@ impl Game {
 
         // Verify diagonals for bishops/queens
         search_enemies_loops![
-            PieceTypes::Bishop,
-            PieceTypes::Queen,
+            PieceType::Bishop,
+            PieceType::Queen,
             (1..).map(|x| (x, x)),
             (1..).map(|x| (-x, -x)),
             (1..).map(|x| (x, -x)),
@@ -931,8 +931,8 @@ impl Game {
         // Add current player
         result.push(' ');
         result.push(match self.current_player {
-            Players::White => 'w',
-            Players::Black => 'b',
+            Player::White => 'w',
+            Player::Black => 'b',
         });
 
         // Add castling rights
@@ -964,8 +964,8 @@ impl Game {
         result.push(' ');
         if state.en_passant() < 8 {
             let row = match self.current_player {
-                Players::White => '6',
-                Players::Black => '3',
+                Player::White => '6',
+                Player::Black => '3',
             };
             result.push((b'a' + state.en_passant() as u8) as char);
             result.push(row);

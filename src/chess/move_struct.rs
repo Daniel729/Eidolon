@@ -1,6 +1,6 @@
-use super::piece::{Piece, PieceTypes};
+use super::piece::{Piece, PieceType};
 use super::position::Position;
-use super::{Game, Players};
+use super::{Game, Player};
 use std::str::FromStr;
 
 #[derive(PartialEq, Eq, Clone, Copy)]
@@ -12,20 +12,20 @@ pub enum Move {
         captured_piece: Option<Piece>,
     },
     Promotion {
-        owner: Players,
-        new_piece: PieceTypes,
+        owner: Player,
+        new_piece: PieceType,
         start: Position,
         end: Position,
         captured_piece: Option<Piece>,
     },
     CastlingShort {
-        owner: Players,
+        owner: Player,
     },
     CastlingLong {
-        owner: Players,
+        owner: Player,
     },
     EnPassant {
-        owner: Players,
+        owner: Player,
         start_col: i8,
         end_col: i8,
     },
@@ -83,17 +83,17 @@ impl Move {
                 s.push((end.col() as u8 + b'a') as char);
                 s.push((end.row() as u8 + b'1') as char);
                 s.push(match new_piece {
-                    PieceTypes::Queen => 'q',
-                    PieceTypes::Rook => 'r',
-                    PieceTypes::Bishop => 'b',
-                    PieceTypes::Knight => 'n',
+                    PieceType::Queen => 'q',
+                    PieceType::Rook => 'r',
+                    PieceType::Bishop => 'b',
+                    PieceType::Knight => 'n',
                     _ => unreachable!(),
                 });
             }
             Self::CastlingShort { owner } => {
                 let row = match owner {
-                    Players::White => '1',
-                    Players::Black => '8',
+                    Player::White => '1',
+                    Player::Black => '8',
                 };
                 s.push('e');
                 s.push(row);
@@ -102,8 +102,8 @@ impl Move {
             }
             Self::CastlingLong { owner } => {
                 let row = match owner {
-                    Players::White => '1',
-                    Players::Black => '8',
+                    Player::White => '1',
+                    Player::Black => '8',
                 };
                 s.push('e');
                 s.push(row);
@@ -116,8 +116,8 @@ impl Move {
                 end_col,
             } => {
                 let (start_row, end_row) = match owner {
-                    Players::White => ('5', '6'),
-                    Players::Black => ('4', '3'),
+                    Player::White => ('5', '6'),
+                    Player::Black => ('4', '3'),
                 };
                 s.push((*start_col as u8 + b'a') as char);
                 s.push(start_row);
@@ -158,8 +158,8 @@ impl Move {
                 s.push('x');
                 s.push((*end_col as u8 + b'a') as char);
                 match owner {
-                    Players::White => s.push('6'),
-                    Players::Black => s.push('3'),
+                    Player::White => s.push('6'),
+                    Player::Black => s.push('3'),
                 };
                 s
             }
@@ -177,10 +177,10 @@ impl Move {
                 s.push_str((end.row() + 1).to_string().as_str());
                 s.push('=');
                 s.push(match new_piece {
-                    PieceTypes::Queen => 'Q',
-                    PieceTypes::Rook => 'R',
-                    PieceTypes::Bishop => 'K',
-                    PieceTypes::Knight => 'B',
+                    PieceType::Queen => 'Q',
+                    PieceType::Rook => 'R',
+                    PieceType::Bishop => 'K',
+                    PieceType::Knight => 'B',
                     _ => unreachable!(),
                 });
                 s
@@ -189,27 +189,24 @@ impl Move {
     }
 
     pub fn from_uci_notation(s: &str, game: &Game) -> Option<Self> {
-        if s == "e1g1" && game.get_king_position(Players::White) == Position::new_assert(0, 4) {
+        if s == "e1g1" && game.get_king_position(Player::White) == Position::new_assert(0, 4) {
             Some(Self::CastlingShort {
-                owner: Players::White,
+                owner: Player::White,
             })
-        } else if s == "e8g8"
-            && game.get_king_position(Players::Black) == Position::new_assert(7, 4)
+        } else if s == "e8g8" && game.get_king_position(Player::Black) == Position::new_assert(7, 4)
         {
             Some(Self::CastlingShort {
-                owner: Players::Black,
+                owner: Player::Black,
             })
-        } else if s == "e1c1"
-            && game.get_king_position(Players::White) == Position::new_assert(0, 4)
+        } else if s == "e1c1" && game.get_king_position(Player::White) == Position::new_assert(0, 4)
         {
             Some(Self::CastlingLong {
-                owner: Players::White,
+                owner: Player::White,
             })
-        } else if s == "e8c8"
-            && game.get_king_position(Players::Black) == Position::new_assert(7, 4)
+        } else if s == "e8c8" && game.get_king_position(Player::Black) == Position::new_assert(7, 4)
         {
             Some(Self::CastlingLong {
-                owner: Players::Black,
+                owner: Player::Black,
             })
         } else {
             let mut chars = s.bytes();
@@ -223,10 +220,10 @@ impl Move {
 
             if let Some(new_piece) = s.chars().nth(4) {
                 let new_piece = match new_piece {
-                    'q' | 'Q' => PieceTypes::Queen,
-                    'r' | 'R' => PieceTypes::Rook,
-                    'n' | 'N' => PieceTypes::Knight,
-                    'b' | 'B' => PieceTypes::Bishop,
+                    'q' | 'Q' => PieceType::Queen,
+                    'r' | 'R' => PieceType::Rook,
+                    'n' | 'N' => PieceType::Knight,
+                    'b' | 'B' => PieceType::Bishop,
                     _ => return None,
                 };
 
@@ -241,7 +238,7 @@ impl Move {
 
             if let Some(piece) = game.get_position(start) {
                 // This move is either en passant or normal
-                return if piece.piece_type == PieceTypes::Pawn
+                return if piece.piece_type == PieceType::Pawn
                     && game.get_position(end).is_none()
                     && i8::abs(start.col() - end.col()) == 1
                 {

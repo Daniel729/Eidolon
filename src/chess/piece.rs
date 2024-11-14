@@ -2,11 +2,11 @@ use super::move_struct::Move;
 use super::position::Position;
 use super::zobrist;
 use super::Score;
-use super::{Game, Players};
+use super::{Game, Player};
 use std::cell::{Cell, OnceCell};
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, PartialOrd, Ord)]
-pub enum PieceTypes {
+pub enum PieceType {
     Queen,
     Rook,
     Bishop,
@@ -17,19 +17,19 @@ pub enum PieceTypes {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Piece {
-    pub piece_type: PieceTypes,
-    pub owner: Players,
+    pub piece_type: PieceType,
+    pub owner: Player,
 }
 
-impl PieceTypes {
+impl PieceType {
     pub fn material_value(self) -> u8 {
         match self {
-            PieceTypes::Pawn => 1,
-            PieceTypes::Bishop => 3,
-            PieceTypes::Knight => 3,
-            PieceTypes::Rook => 5,
-            PieceTypes::Queen => 9,
-            PieceTypes::King => 100,
+            PieceType::Pawn => 1,
+            PieceType::Bishop => 3,
+            PieceType::Knight => 3,
+            PieceType::Rook => 5,
+            PieceType::Queen => 9,
+            PieceType::King => 100,
         }
     }
 }
@@ -39,8 +39,8 @@ impl Piece {
         let piece_score_array = scores[self.piece_type as usize].get();
 
         let row = match self.owner {
-            Players::White => 7 - pos.row(),
-            Players::Black => pos.row(),
+            Player::White => 7 - pos.row(),
+            Player::Black => pos.row(),
         };
 
         // SAFETY: Position is always valid
@@ -60,7 +60,7 @@ impl Piece {
         // This function is used to index zobrist::PIECE array
         // The return values are between 0 and 11
         let mut index = self.piece_type as usize;
-        if self.owner == Players::Black {
+        if self.owner == Player::Black {
             index += 6;
         }
         index
@@ -105,10 +105,10 @@ impl Piece {
         }
 
         match self.piece_type {
-            PieceTypes::Pawn => self.get_pawn_moves(push, game, pos),
-            PieceTypes::King => self.get_king_moves(push, game, pos),
-            PieceTypes::Knight => self.get_knight_moves(push, game, pos),
-            PieceTypes::Rook => {
+            PieceType::Pawn => self.get_pawn_moves(push, game, pos),
+            PieceType::King => self.get_king_moves(push, game, pos),
+            PieceType::Knight => self.get_knight_moves(push, game, pos),
+            PieceType::Rook => {
                 search_deltas![
                     (1..).map(|x| (0, x)),
                     (1..).map(|x| (0, -x)),
@@ -116,7 +116,7 @@ impl Piece {
                     (1..).map(|x| (-x, 0))
                 ];
             }
-            PieceTypes::Bishop => {
+            PieceType::Bishop => {
                 search_deltas![
                     (1..).map(|x| (x, x)),
                     (1..).map(|x| (-x, -x)),
@@ -125,7 +125,7 @@ impl Piece {
                 ];
             }
 
-            PieceTypes::Queen => {
+            PieceType::Queen => {
                 search_deltas![
                     (1..).map(|x| (0, x)),
                     (1..).map(|x| (0, -x)),
@@ -142,28 +142,28 @@ impl Piece {
 
     fn get_pawn_moves(self, mut push: impl FnMut(Move), game: &Game, pos: Position) {
         let first_row = match self.owner {
-            Players::White => 1,
-            Players::Black => 6,
+            Player::White => 1,
+            Player::Black => 6,
         };
 
         let last_row = match self.owner {
-            Players::White => 7,
-            Players::Black => 0,
+            Player::White => 7,
+            Player::Black => 0,
         };
 
         let en_passant_row = match self.owner {
-            Players::White => 4,
-            Players::Black => 3,
+            Player::White => 4,
+            Player::Black => 3,
         };
 
         let normal_delta = match self.owner {
-            Players::White => (1, 0),
-            Players::Black => (-1, 0),
+            Player::White => (1, 0),
+            Player::Black => (-1, 0),
         };
 
         let first_row_delta = match self.owner {
-            Players::White => (2, 0),
-            Players::Black => (-2, 0),
+            Player::White => (2, 0),
+            Player::Black => (-2, 0),
         };
 
         // SAFETY: First moves for pawns always exist
@@ -182,18 +182,18 @@ impl Piece {
         }
 
         let side_deltas = match self.owner {
-            Players::White => [(1, 1), (1, -1)],
-            Players::Black => [(-1, 1), (-1, -1)],
+            Player::White => [(1, 1), (1, -1)],
+            Player::Black => [(-1, 1), (-1, -1)],
         };
 
         if let Some(new_pos) = pos.add(normal_delta) {
             if game.get_position(new_pos).is_none() {
                 if last_row == new_pos.row() {
                     for new_piece in [
-                        PieceTypes::Queen,
-                        PieceTypes::Rook,
-                        PieceTypes::Bishop,
-                        PieceTypes::Knight,
+                        PieceType::Queen,
+                        PieceType::Rook,
+                        PieceType::Bishop,
+                        PieceType::Knight,
                     ] {
                         let _move = Move::Promotion {
                             owner: game.current_player,
@@ -222,10 +222,10 @@ impl Piece {
                 if place.is_some_and(|piece| piece.owner != self.owner) {
                     if last_row == new_pos.row() {
                         for new_piece in [
-                            PieceTypes::Queen,
-                            PieceTypes::Rook,
-                            PieceTypes::Bishop,
-                            PieceTypes::Knight,
+                            PieceType::Queen,
+                            PieceType::Rook,
+                            PieceType::Bishop,
+                            PieceType::Knight,
                         ] {
                             let _move = Move::Promotion {
                                 owner: game.current_player,
@@ -295,12 +295,12 @@ impl Piece {
         }
         let state = game.state();
         let (king_side_castling, queen_side_castling) = match game.current_player {
-            Players::White => (state.white_king_castling(), state.white_queen_castling()),
-            Players::Black => (state.black_king_castling(), state.black_queen_castling()),
+            Player::White => (state.white_king_castling(), state.white_queen_castling()),
+            Player::Black => (state.black_king_castling(), state.black_queen_castling()),
         };
         let row = match game.current_player {
-            Players::White => 0,
-            Players::Black => 7,
+            Player::White => 0,
+            Player::Black => 7,
         };
         // We may need this value 0, 1, or 2 times so we lazy-initialize it.
         let is_king_targeted = OnceCell::new();
@@ -366,66 +366,66 @@ impl Piece {
 
     pub fn as_char(self) -> char {
         match self.owner {
-            Players::White => match self.piece_type {
-                PieceTypes::King => '♔',
-                PieceTypes::Queen => '♕',
-                PieceTypes::Rook => '♖',
-                PieceTypes::Bishop => '♗',
-                PieceTypes::Knight => '♘',
-                PieceTypes::Pawn => '♙',
+            Player::White => match self.piece_type {
+                PieceType::King => '♔',
+                PieceType::Queen => '♕',
+                PieceType::Rook => '♖',
+                PieceType::Bishop => '♗',
+                PieceType::Knight => '♘',
+                PieceType::Pawn => '♙',
             },
-            Players::Black => match self.piece_type {
-                PieceTypes::King => '♚',
-                PieceTypes::Queen => '♛',
-                PieceTypes::Rook => '♜',
-                PieceTypes::Bishop => '♝',
-                PieceTypes::Knight => '♞',
-                PieceTypes::Pawn => '♟',
+            Player::Black => match self.piece_type {
+                PieceType::King => '♚',
+                PieceType::Queen => '♛',
+                PieceType::Rook => '♜',
+                PieceType::Bishop => '♝',
+                PieceType::Knight => '♞',
+                PieceType::Pawn => '♟',
             },
         }
     }
 
     pub fn as_str_pgn(self) -> &'static str {
         match self.piece_type {
-            PieceTypes::King => "K",
-            PieceTypes::Queen => "Q",
-            PieceTypes::Rook => "R",
-            PieceTypes::Bishop => "B",
-            PieceTypes::Knight => "N",
-            PieceTypes::Pawn => "",
+            PieceType::King => "K",
+            PieceType::Queen => "Q",
+            PieceType::Rook => "R",
+            PieceType::Bishop => "B",
+            PieceType::Knight => "N",
+            PieceType::Pawn => "",
         }
     }
 
     pub fn as_char_ascii(self) -> char {
         let piece = match self.piece_type {
-            PieceTypes::King => 'K',
-            PieceTypes::Queen => 'Q',
-            PieceTypes::Rook => 'R',
-            PieceTypes::Bishop => 'B',
-            PieceTypes::Knight => 'N',
-            PieceTypes::Pawn => 'P',
+            PieceType::King => 'K',
+            PieceType::Queen => 'Q',
+            PieceType::Rook => 'R',
+            PieceType::Bishop => 'B',
+            PieceType::Knight => 'N',
+            PieceType::Pawn => 'P',
         };
 
         match self.owner {
-            Players::White => piece,
-            Players::Black => piece.to_ascii_lowercase(),
+            Player::White => piece,
+            Player::Black => piece.to_ascii_lowercase(),
         }
     }
 
     pub fn from_char_ascii(piece: char) -> Option<Self> {
         let owner = if piece.is_ascii_lowercase() {
-            Players::Black
+            Player::Black
         } else {
-            Players::White
+            Player::White
         };
 
         let piece_type = match piece.to_ascii_uppercase() {
-            'K' => PieceTypes::King,
-            'Q' => PieceTypes::Queen,
-            'R' => PieceTypes::Rook,
-            'B' => PieceTypes::Bishop,
-            'N' => PieceTypes::Knight,
-            'P' => PieceTypes::Pawn,
+            'K' => PieceType::King,
+            'Q' => PieceType::Queen,
+            'R' => PieceType::Rook,
+            'B' => PieceType::Bishop,
+            'N' => PieceType::Knight,
+            'P' => PieceType::Pawn,
             _ => return None,
         };
 

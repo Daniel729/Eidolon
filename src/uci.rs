@@ -1,6 +1,6 @@
 use crate::{
     chess::move_struct::Move,
-    chess::{Game, Players},
+    chess::{Game, Player},
     constants::TT_CAPACITY,
     search::{get_best_move_in_time, TranspositionTable},
 };
@@ -132,7 +132,7 @@ fn command_go(
         let black_time =
             (btime as f64 * FRACTION_OF_TOTAL_TIME) as u64 + binc - LATENCY_MS_COMPENSATE;
 
-        time = if game.player() == Players::White {
+        time = if game.player() == Player::White {
             Some(Duration::from_millis(white_time))
         } else {
             Some(Duration::from_millis(black_time))
