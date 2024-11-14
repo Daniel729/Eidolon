@@ -162,43 +162,19 @@ fn command_position(
     terms: &mut std::str::SplitAsciiWhitespace<'_>,
 ) -> anyhow::Result<()> {
     if let Some(term) = terms.next() {
-        match term {
+        let game = match term {
             "startpos" => {
                 data.current_game = Some(Game::default());
-                let game = data.current_game.as_mut().unwrap();
-                if let Some(term) = terms.next() {
-                    if term == "moves" {
-                        for move_str in terms.by_ref() {
-                            let Some(_move) = Move::from_uci_notation(move_str, game) else {
-                                data.current_game = None;
-                                bail!("Invalid move: {}", move_str);
-                            };
-
-                            let mut moves = ArrayVec::new();
-                            game.get_moves(&mut moves, true);
-                            if moves.iter().any(|allowed_move| _move == *allowed_move) {
-                                game.push_history(_move);
-                                if game.len() >= 400 {
-                                    data.current_game = None;
-                                    bail!("Game became too long, please try again");
-                                }
-                            } else {
-                                bail!("Invalid move: {}", move_str);
-                            }
-                        }
-                    }
-                }
+                data.current_game.as_mut().unwrap()
             }
             "fen" => {
-                let mut terms = terms.clone();
-
                 let fen: String = terms
                     .by_ref()
                     .take_while(|term| *term != "moves")
                     .flat_map(|term| [term, " "].into_iter())
                     .collect();
 
-                let game = match Game::new(&fen) {
+                match Game::new(&fen) {
                     Ok(fen_game) => {
                         data.current_game = Some(fen_game);
                         data.current_game.as_mut().unwrap()
@@ -207,8 +183,13 @@ fn command_position(
                         data.current_game = None;
                         bail!("{:?}", err.context("Invalid FEN string"));
                     }
-                };
+                }
+            }
+            _ => bail!("Invalid position command"),
+        };
 
+        if let Some(term) = terms.next() {
+            if term == "moves" {
                 for move_str in terms.by_ref() {
                     let Some(_move) = Move::from_uci_notation(move_str, game) else {
                         data.current_game = None;
@@ -228,7 +209,6 @@ fn command_position(
                     }
                 }
             }
-            _ => bail!("Invalid position command"),
         }
     } else {
         bail!("Invalid position command");
