@@ -6,7 +6,6 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0"
 arrayvec = "0.7"
-const-random = "0.1"
 nohash-hasher = "0.2"
 seq-macro = "0.3"
 
