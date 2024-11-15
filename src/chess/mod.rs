@@ -522,11 +522,8 @@ impl Game {
 
     pub fn pop(&mut self, _move: Move) {
         self.hash ^= self.state().hash();
-        // SAFETY: There is always a previous state
-        unsafe {
-            // self.state.pop() without verification for being empty
-            self.state.set_len(self.len() - 1);
-        }
+        // self.state.pop() without verification for being empty
+        self.state.truncate(self.len().saturating_sub(1));
         self.hash ^= self.state().hash();
         self.hash ^= zobrist::BLACK_TO_MOVE;
         self.current_player = self.current_player.the_other();
@@ -747,7 +744,8 @@ impl Game {
                     keep_index += 1;
                 }
             }
-            unsafe { moves.set_len(keep_index) };
+
+            moves.truncate(keep_index);
         }
     }
 
