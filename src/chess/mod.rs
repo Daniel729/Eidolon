@@ -1008,7 +1008,7 @@ impl std::fmt::Display for Game {
 
 mod tests {
     use super::*;
-    use crate::benchmark::GAME;
+    use crate::constants::TESTING_GAME;
     #[test]
     fn fen_startpos() {
         let game = Game::default();
@@ -1023,7 +1023,7 @@ mod tests {
     fn fen_whole_game() {
         let mut game = Game::default();
 
-        for _move in GAME.split_ascii_whitespace() {
+        for _move in TESTING_GAME.split_ascii_whitespace() {
             let _move = Move::from_uci_notation(_move, &game).unwrap();
             game.push(_move);
 
@@ -1069,7 +1069,7 @@ mod tests {
     fn check_hashing_consistency() {
         let mut game = Game::default();
 
-        for _move in GAME.split_ascii_whitespace() {
+        for _move in TESTING_GAME.split_ascii_whitespace() {
             let _move = Move::from_uci_notation(_move, &game).unwrap();
             game.push(_move);
 
