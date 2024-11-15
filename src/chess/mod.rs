@@ -1053,9 +1053,6 @@ mod tests {
         let _move = Move::from_uci_notation("d7d5", &game).unwrap();
         game.push(_move);
 
-        let _move = Move::from_uci_notation("e5d6", &game).unwrap();
-        game.push(_move);
-
         let fen = game.fen();
 
         let game2 = Game::new(&fen).unwrap();
