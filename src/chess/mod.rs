@@ -13,7 +13,6 @@ use move_struct::Move;
 use piece::{Piece, PieceType};
 use position::Position;
 use scores::ENDGAME_THRESHOLD;
-use seq_macro::seq;
 use std::cell::Cell;
 
 pub type Score = i16;
@@ -707,16 +706,16 @@ impl Game {
             }
         };
 
-        seq!(row in 0..8 {
-            seq!(col in 0..8 {
+        for row in 0..8 {
+            for col in 0..8 {
                 let pos = Position::new_assert(row, col);
                 if let Some(piece) = self.get_position(pos) {
                     if piece.owner == self.current_player {
                         piece.get_moves(&mut push, self, pos);
                     }
                 }
-            });
-        });
+            }
+        }
 
         // If verify_king then remove moves which put the king in check (invalid moves)
         // We remove invalid moves by overwriting them with the following valid moves

@@ -7,7 +7,6 @@ edition = "2021"
 anyhow = "1.0"
 arrayvec = "0.7"
 nohash-hasher = "0.2"
-seq-macro = "0.3"
 
 [profile.release]
 debug = "full"
