@@ -1,17 +1,32 @@
 use crate::{
-    chess::move_struct::Move,
-    chess::{Game, Player},
+    chess::{move_struct::Move, Game, Player},
     constants::TT_CAPACITY,
-    search::{get_best_move_in_time, TranspositionTable},
+    search::{get_best_move_until_stop, TranspositionTable},
 };
 use anyhow::{bail, Context};
 use arrayvec::ArrayVec;
 use nohash_hasher::BuildNoHashHasher;
-use std::{collections::HashMap, io::stdin, time::Duration};
+use std::{
+    collections::HashMap,
+    io::stdin,
+    str::SplitAsciiWhitespace,
+    sync::{
+        atomic::{AtomicBool, Ordering::Relaxed},
+        Arc, Mutex,
+    },
+    thread::{self, JoinHandle},
+    time::Duration,
+};
 
 struct Data {
     current_game: Option<Game>,
     cache: TranspositionTable,
+}
+
+impl Data {
+    fn mut_refs(&mut self) -> (&mut Option<Game>, &mut TranspositionTable) {
+        (&mut self.current_game, &mut self.cache)
+    }
 }
 
 /// Enter uci mode and wait for commands
@@ -19,10 +34,13 @@ struct Data {
 /// Specification of UCI standard source
 /// https://gist.github.com/DOBRO/2592c6dad754ba67e6dcaec8c90165bf
 pub fn uci_talk() -> anyhow::Result<()> {
-    let mut data = Data {
+    let data = Arc::new(Mutex::new(Data {
         current_game: None,
         cache: HashMap::with_capacity_and_hasher(TT_CAPACITY, BuildNoHashHasher::default()),
-    };
+    }));
+
+    let mut search_thread: Option<JoinHandle<()>> = None;
+    let mut search_is_running = Arc::new(AtomicBool::new(false));
 
     'main_loop: for line in stdin().lines() {
         let line = line.context("Failed to read line from stdin")?;
@@ -35,25 +53,65 @@ pub fn uci_talk() -> anyhow::Result<()> {
                     command_uci();
                 }
                 "ucinewgame" => {
+                    if search_is_running.load(Relaxed) {
+                        let thread =
+                            search_thread.context("There should a search thread running")?;
+                        search_is_running.store(false, Relaxed);
+                        thread.join().unwrap();
+                        search_thread = None;
+                    }
+                    let mut data = data.lock().unwrap();
                     command_ucinewgame(&mut data);
                 }
                 "isready" => {
                     command_isready();
                 }
                 "position" => {
-                    if let Err(err) = command_position(&mut data, &mut terms) {
-                        println!("error: {}", err);
-                    };
+                    if search_is_running.load(Relaxed) {
+                        println!("error: search is still running, enter 'stop' to stop it");
+                    } else {
+                        let mut data = data.lock().unwrap();
+                        if let Err(err) = command_position(&mut data, &mut terms) {
+                            println!("error: {}", err);
+                        };
+                    }
                 }
                 "go" => {
-                    if let Err(err) = command_go(&mut data, &mut terms) {
-                        println!("error: {}", err);
-                    };
+                    if search_is_running.load(Relaxed) {
+                        println!("error: search is still running, enter 'stop' to stop it");
+                    } else {
+                        // Create new bool such that if the old sleep threaed is still runnning
+                        // it won't affect this new search
+                        search_is_running = Arc::new(AtomicBool::new(false));
+                        match command_go(&data, &mut terms, &search_is_running) {
+                            Ok(thread) => search_thread = Some(thread),
+                            Err(err) => println!("error: {}", err),
+                        }
+                    }
                 }
                 "show" => {
-                    if let Err(err) = command_show(&data) {
-                        println!("error: {}", err);
-                    };
+                    if search_is_running.load(Relaxed) {
+                        println!("error: search is still running, enter 'stop' to stop it");
+                    } else {
+                        let data = data.lock().unwrap();
+                        if let Err(err) = command_show(&data) {
+                            println!("error: {}", err);
+                        };
+                    }
+                }
+                "stop" => {
+                    search_is_running.store(false, Relaxed);
+                    if let Some(thread) = search_thread {
+                        thread.join().unwrap();
+                        search_thread = None;
+                    }
+                }
+                "wait" => {
+                    if let Some(thread) = search_thread {
+                        thread.join().unwrap();
+                        search_thread = None;
+                        search_is_running.store(false, Relaxed);
+                    }
                 }
                 "quit" => {
                     break 'main_loop;
@@ -94,9 +152,11 @@ fn command_show(data: &Data) -> anyhow::Result<()> {
 }
 
 fn command_go(
-    data: &mut Data,
-    terms: &mut std::str::SplitAsciiWhitespace<'_>,
-) -> anyhow::Result<()> {
+    data_mutex: &Arc<Mutex<Data>>,
+    terms: &mut SplitAsciiWhitespace<'_>,
+    search_is_running: &Arc<AtomicBool>,
+) -> anyhow::Result<JoinHandle<()>> {
+    let mut data = data_mutex.lock().unwrap();
     let Some(game) = data.current_game.as_mut() else {
         bail!("No game to play, please set a position first");
     };
@@ -105,6 +165,9 @@ fn command_go(
     let mut btime: Option<u64> = None;
     let mut winc: Option<u64> = None;
     let mut binc: Option<u64> = None;
+    let mut depth: Option<u8> = None;
+    let mut move_time: Option<u64> = None;
+    let mut infinite = false;
 
     while let Some(term) = terms.next() {
         match term {
@@ -112,9 +175,13 @@ fn command_go(
             "btime" => btime = terms.next().and_then(|s| s.parse().ok()),
             "winc" => winc = terms.next().and_then(|s| s.parse().ok()),
             "binc" => binc = terms.next().and_then(|s| s.parse().ok()),
+            "depth" => depth = terms.next().and_then(|s| s.parse().ok()),
+            "movetime" => move_time = terms.next().and_then(|s| s.parse().ok()),
+            "infinite" => infinite = true,
             _ => continue,
         }
     }
+
     const FRACTION_OF_TOTAL_TIME: f64 = 0.02;
     const LATENCY_MS_COMPENSATE: u64 = 150;
 
@@ -138,29 +205,59 @@ fn command_go(
             Some(Duration::from_millis(black_time))
         };
     }
-    if let Some(env_time) = std::env::var("CHESS_TIME_PER_MOVE")
-        .ok()
-        .and_then(|s| s.parse::<u64>().ok())
-    {
-        time = Some(Duration::from_millis(env_time));
-    }
-    let time = time.unwrap_or(Duration::from_secs(2));
 
-    println!("info time {:?}", time.as_millis());
-
-    if let Some(best_move) = get_best_move_in_time(game, time, &mut data.cache, true) {
-        println!("bestmove {}", best_move.uci_notation());
+    if let Some(move_time) = move_time {
+        time = Some(Duration::from_millis(move_time));
     }
 
-    data.current_game = None;
+    if let Some(time) = time {
+        if !infinite {
+            // Cut 5 ms from the time because sleep always takes more than given
+            let time = time.saturating_sub(Duration::from_millis(5));
 
-    Ok(())
+            println!("info time {:?}", time.as_millis());
+
+            // This thread might stop a future search if the current one stops by itself
+            // Thus when a new search is started, a new atomic bool is created
+            thread::spawn({
+                let search_is_running = search_is_running.clone();
+                move || {
+                    thread::sleep(time);
+                    search_is_running.store(false, Relaxed);
+                }
+            });
+        }
+    }
+
+    let thread = thread::spawn({
+        search_is_running.store(true, Relaxed);
+        let data_mutex = data_mutex.clone();
+        let search_is_running = search_is_running.clone();
+        move || {
+            let mut data = data_mutex.lock().unwrap();
+            let (current_game, cache) = data.mut_refs();
+            let best_move = get_best_move_until_stop(
+                current_game.as_mut().unwrap(),
+                cache,
+                &search_is_running,
+                depth,
+            );
+
+            if let Some(best_move) = best_move {
+                println!("bestmove {}", best_move.uci_notation());
+            } else {
+                println!("bestmove none");
+            }
+
+            search_is_running.store(false, Relaxed);
+            *current_game = None;
+        }
+    });
+
+    Ok(thread)
 }
 
-fn command_position(
-    data: &mut Data,
-    terms: &mut std::str::SplitAsciiWhitespace<'_>,
-) -> anyhow::Result<()> {
+fn command_position(data: &mut Data, terms: &mut SplitAsciiWhitespace<'_>) -> anyhow::Result<()> {
     if let Some(term) = terms.next() {
         let game = match term {
             "startpos" => {

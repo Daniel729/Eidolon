@@ -26,7 +26,7 @@ pub fn run_simple_benchmark(depth: u8, steps: u8) {
     let mut game = Game::default();
     let mut durations = vec![];
 
-    let atomic_false = AtomicBool::new(false);
+    let is_running = AtomicBool::new(true);
 
     let mut cache: TranspositionTable =
         HashMap::with_capacity_and_hasher(TT_CAPACITY, BuildHasherDefault::default());
@@ -35,7 +35,7 @@ pub fn run_simple_benchmark(depth: u8, steps: u8) {
 
         let mut history = [0; 64 * 12];
 
-        get_best_move_entry(game.clone(), &atomic_false, depth, &mut cache, &mut history).unwrap();
+        get_best_move_entry(game.clone(), &is_running, depth, &mut cache, &mut history).unwrap();
 
         durations.push(now.elapsed());
 
@@ -66,7 +66,7 @@ pub fn run_iterative_benchmark(depth: u8, steps: u8) {
     let mut game = Game::default();
     let mut durations = vec![];
 
-    let atomic_false = AtomicBool::new(false);
+    let is_running = AtomicBool::new(true);
 
     let mut cache: TranspositionTable =
         HashMap::with_capacity_and_hasher(TT_CAPACITY, BuildHasherDefault::default());
@@ -75,10 +75,10 @@ pub fn run_iterative_benchmark(depth: u8, steps: u8) {
 
         let mut history = [0; 64 * 12];
 
-        for iter_depth in 2..=depth {
+        for iter_depth in 1..=depth {
             get_best_move_entry(
                 game.clone(),
-                &atomic_false,
+                &is_running,
                 iter_depth,
                 &mut cache,
                 &mut history,

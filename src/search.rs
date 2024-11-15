@@ -3,12 +3,7 @@ use arrayvec::ArrayVec;
 use nohash_hasher::BuildNoHashHasher;
 use std::{
     collections::HashMap,
-    sync::{
-        atomic::{self, AtomicBool},
-        Arc,
-    },
-    thread,
-    time::Duration,
+    sync::atomic::{AtomicBool, Ordering::Relaxed},
 };
 
 pub type TranspositionTable = HashMap<u64, TableEntry, BuildNoHashHasher<u64>>;
@@ -166,15 +161,15 @@ fn get_best_move_score_depth_1(
 fn get_best_move_score(
     game: &mut Game,
     table: &mut TranspositionTable,
-    should_stop: &AtomicBool, // Flag to stop the search early
-    remaining_depth: u8,      // Moves left to search
-    real_depth: u8,           // Moves made since root of the search tree
+    continue_running: &AtomicBool, // Flag to stop the search early
+    remaining_depth: u8,           // Moves left to search
+    real_depth: u8,                // Moves made since root of the search tree
     mut alpha: Score,
     beta: Score,
     killer_moves: &mut [Option<Move>],
     history: &mut [u16; 64 * 12],
 ) -> Option<Score> {
-    if should_stop.load(atomic::Ordering::Relaxed) {
+    if !continue_running.load(Relaxed) {
         // Halt the search early
         return None;
     }
@@ -238,7 +233,7 @@ fn get_best_move_score(
             let score = -get_best_move_score(
                 game,
                 table,
-                should_stop,
+                continue_running,
                 remaining_depth - 1,
                 real_depth + 1,
                 -beta,
@@ -260,7 +255,7 @@ fn get_best_move_score(
             let test_score = -get_best_move_score(
                 game,
                 table,
-                should_stop,
+                continue_running,
                 remaining_depth - 1,
                 real_depth + 1,
                 -alpha - 1,
@@ -275,7 +270,7 @@ fn get_best_move_score(
                 let score = -get_best_move_score(
                     game,
                     table,
-                    should_stop,
+                    continue_running,
                     remaining_depth - 1,
                     real_depth + 1,
                     -beta,
@@ -334,7 +329,7 @@ fn get_best_move_score(
 /// and a flag indicating if there is only one move available
 pub fn get_best_move_entry(
     mut game: Game,
-    should_stop: &AtomicBool,
+    continue_running: &AtomicBool,
     depth: u8,
     table: &mut TranspositionTable,
     history: &mut [u16; 64 * 12],
@@ -381,7 +376,7 @@ pub fn get_best_move_entry(
             let score = -get_best_move_score(
                 &mut game,
                 table,
-                should_stop,
+                continue_running,
                 depth - 1,
                 1,
                 Score::MIN + 1,
@@ -401,7 +396,7 @@ pub fn get_best_move_entry(
             let score = -get_best_move_score(
                 &mut game,
                 table,
-                should_stop,
+                continue_running,
                 depth - 1,
                 1,
                 -best_score - 1,
@@ -416,7 +411,7 @@ pub fn get_best_move_entry(
                 let score2 = -get_best_move_score(
                     &mut game,
                     table,
-                    should_stop,
+                    continue_running,
                     depth - 1,
                     1,
                     Score::MIN + 1,
@@ -452,24 +447,14 @@ pub fn get_best_move_entry(
 }
 
 /// This function repeatedly calls get_best_move with increasing depth,
-/// until the time limit is reached, at which point it returns the best move found so far
-pub fn get_best_move_in_time(
+/// until `continue_running` is set to false, at which point it returns the best move found so far
+pub fn get_best_move_until_stop(
     game: &Game,
-    duration: Duration,
     table: &mut TranspositionTable,
-    log: bool,
+    continue_running: &AtomicBool,
+    max_depth: Option<u8>,
 ) -> Option<Move> {
     let mut found_move = None;
-
-    // Stop searching after the duration has passed
-    let should_stop = Arc::new(AtomicBool::new(false));
-    thread::spawn({
-        let should_stop = should_stop.clone();
-        move || {
-            thread::sleep(duration);
-            should_stop.store(true, atomic::Ordering::Relaxed);
-        }
-    });
 
     let mut history = [0; 64 * 12];
 
@@ -479,19 +464,15 @@ pub fn get_best_move_in_time(
             if entry.flag == NodeType::Exact {
                 entry.depth
             } else {
-                5
+                1
             }
         })
-        .unwrap_or(5);
+        .unwrap_or(1);
 
     for depth in starting_depth.. {
-        let Some((best_move, best_score, is_only_move)) = get_best_move_entry(
-            game.clone(),
-            should_stop.as_ref(),
-            depth,
-            table,
-            &mut history,
-        ) else {
+        let Some((best_move, best_score, is_only_move)) =
+            get_best_move_entry(game.clone(), continue_running, depth, table, &mut history)
+        else {
             return found_move;
         };
 
@@ -499,29 +480,32 @@ pub fn get_best_move_in_time(
         let mut game_clone = game.clone();
 
         found_move = best_move;
-        if log {
-            print!("info pv ");
-            for _ in 0..depth {
-                if let Some(entry) = table.get(&hash) {
-                    if let Some(pv) = entry.pv {
-                        game_clone.push(pv);
-                        print!("{} ", pv.uci_notation());
-                        hash = game_clone.hash();
-                    } else {
-                        break;
-                    }
+
+        println!("info depth {}", depth);
+        println!("info score cp {}", best_score);
+        println!("info nodes {}", table.len());
+        print!("info pv ");
+        for _ in 0..depth {
+            if let Some(entry) = table.get(&hash) {
+                if let Some(pv) = entry.pv {
+                    game_clone.push(pv);
+                    print!("{} ", pv.uci_notation());
+                    hash = game_clone.hash();
                 } else {
                     break;
                 }
+            } else {
+                break;
             }
-            println!();
-            println!("info depth {}", depth);
-            println!("info score cp {}", best_score);
-            println!("info nodes {}", table.len());
         }
+        println!();
 
         // If mate can be forced, or there is only a single move available, stop searching
-        if is_only_move || best_score > Score::MAX - 1000 || best_score < Score::MIN + 1000 {
+        if max_depth.is_some_and(|d| d == depth)
+            || is_only_move
+            || best_score > Score::MAX - 1000
+            || best_score < Score::MIN + 1000
+        {
             return found_move;
         }
     }
