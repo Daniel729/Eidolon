@@ -25,13 +25,13 @@ pub fn autoplay(millis: u64) {
         println!("{}", game.get_pgn());
         println!("{}", &game);
 
-        let search_is_running = Arc::new(AtomicBool::new(false));
+        let search_is_running = Arc::new(AtomicBool::new(true));
 
         std::thread::spawn({
             let search_is_running = search_is_running.clone();
             move || {
                 std::thread::sleep(Duration::from_millis(millis));
-                search_is_running.store(true, Relaxed);
+                search_is_running.store(false, Relaxed);
             }
         });
 
