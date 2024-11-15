@@ -978,7 +978,7 @@ impl std::fmt::Display for Game {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         writeln!(f)?;
 
-        writeln!(f, "Hash: {:x}", self.hash)?;
+        writeln!(f, "Hash: {:X}", self.hash)?;
         writeln!(f, "Fen: {}", self.fen())?;
         writeln!(f, "PGN: {}", self.get_pgn())?;
         writeln!(f)?;
