@@ -258,16 +258,32 @@ fn command_go(
 }
 
 fn command_position(data: &mut Data, terms: &mut SplitAsciiWhitespace<'_>) -> anyhow::Result<()> {
+    let mut add_moves = false;
+
     if let Some(term) = terms.next() {
         let game = match term {
             "startpos" => {
                 data.current_game = Some(Game::default());
+
+                if let Some(term) = terms.next() {
+                    if term == "moves" {
+                        add_moves = true;
+                    }
+                }
+
                 data.current_game.as_mut().unwrap()
             }
             "fen" => {
                 let fen: String = terms
                     .by_ref()
-                    .take_while(|term| *term != "moves")
+                    .take_while(|&term| {
+                        if term == "moves" {
+                            add_moves = true;
+                            false
+                        } else {
+                            true
+                        }
+                    })
                     .flat_map(|term| [term, " "].into_iter())
                     .collect();
 
@@ -285,25 +301,23 @@ fn command_position(data: &mut Data, terms: &mut SplitAsciiWhitespace<'_>) -> an
             _ => bail!("Invalid position command"),
         };
 
-        if let Some(term) = terms.next() {
-            if term == "moves" {
-                for move_str in terms.by_ref() {
-                    let Some(_move) = Move::from_uci_notation(move_str, game) else {
-                        data.current_game = None;
-                        bail!("Invalid move: {}", move_str);
-                    };
+        if add_moves {
+            for move_str in terms.by_ref() {
+                let Some(_move) = Move::from_uci_notation(move_str, game) else {
+                    data.current_game = None;
+                    bail!("Invalid move: {}", move_str);
+                };
 
-                    let mut moves = ArrayVec::new();
-                    game.get_moves(&mut moves, true);
-                    if moves.iter().any(|allowed_move| _move == *allowed_move) {
-                        game.push_history(_move);
-                        if game.len() >= 400 {
-                            data.current_game = None;
-                            bail!("Game became too long, please try again");
-                        }
-                    } else {
-                        bail!("Invalid move: {}", move_str);
+                let mut moves = ArrayVec::new();
+                game.get_moves(&mut moves, true);
+                if moves.iter().any(|allowed_move| _move == *allowed_move) {
+                    game.push_history(_move);
+                    if game.len() >= 400 {
+                        data.current_game = None;
+                        bail!("Game became too long, please try again");
                     }
+                } else {
+                    bail!("Invalid move: {}", move_str);
                 }
             }
         }
