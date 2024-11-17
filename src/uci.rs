@@ -89,7 +89,7 @@ pub fn uci_talk() -> anyhow::Result<()> {
                         }
                     }
                 }
-                "show" => {
+                "show" | "d" => {
                     if search_is_running.load(Relaxed) {
                         println!("error: search is still running, enter 'stop' to stop it");
                     } else {
