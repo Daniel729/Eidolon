@@ -970,6 +970,14 @@ impl Game {
             result.push('-');
         }
 
+        // TODO: Track halfmove clock
+        result.push(' ');
+        result.push('0');
+
+        // Add fullmove number
+        result.push(' ');
+        result.push_str(&((self.move_stack.len() / 2) + 1).to_string());
+
         result
     }
 }
