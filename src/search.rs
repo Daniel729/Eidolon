@@ -89,9 +89,7 @@ fn quiescence_search(game: &mut Game, mut alpha: Score, beta: Score, real_depth:
         }
     }
 
-    for _move in &moves {
-        let _move = *_move;
-
+    for &_move in &moves {
         if !_move.is_tactical_move() {
             continue;
         }
@@ -137,8 +135,7 @@ fn get_best_move_score_depth_1(
         }
     }
 
-    for _move in &moves {
-        let _move = *_move;
+    for &_move in &moves {
         game.push(_move);
         let score = -quiescence_search(game, -beta, -alpha, real_depth + 1);
         game.pop(_move);
@@ -225,9 +222,7 @@ fn get_best_move_score(
     let mut best_move = None;
     let mut best_score = Score::MIN;
 
-    for (index, _move) in moves.iter().enumerate() {
-        let _move = *_move;
-
+    for (index, &_move) in moves.iter().enumerate() {
         if index <= 2 {
             game.push(_move);
             let score = -get_best_move_score(
@@ -353,8 +348,8 @@ pub fn get_best_move_entry(
     {
         let repetition_move = game.move_stack()[game.move_stack().len() - 4];
 
-        for (index, _move) in moves.iter().enumerate() {
-            if repetition_move == *_move {
+        for (index, &_move) in moves.iter().enumerate() {
+            if repetition_move == _move {
                 moves.swap_remove(index);
                 break;
             }
@@ -369,8 +364,7 @@ pub fn get_best_move_entry(
     let pv_move = table.get(&game.hash()).and_then(|entry| entry.pv);
     moves.sort_by_cached_key(|a| move_score(*a, pv_move, None, history));
 
-    for (index, _move) in moves.iter().enumerate() {
-        let _move = *_move;
+    for (index, &_move) in moves.iter().enumerate() {
         if index <= 2 {
             game.push(_move);
             let score = -get_best_move_score(

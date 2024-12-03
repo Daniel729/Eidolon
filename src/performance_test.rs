@@ -15,8 +15,7 @@ pub fn perft(game: &mut Game, depth: u8) -> usize {
         return moves.len();
     }
 
-    for _move in moves.iter() {
-        let _move = *_move;
+    for &_move in &moves {
         game.push(_move);
         count += perft(game, depth - 1);
         game.pop(_move);

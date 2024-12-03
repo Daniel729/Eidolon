@@ -310,7 +310,7 @@ fn command_position(data: &mut Data, terms: &mut SplitAsciiWhitespace<'_>) -> an
 
                 let mut moves = ArrayVec::new();
                 game.get_moves(&mut moves, true);
-                if moves.iter().any(|allowed_move| _move == *allowed_move) {
+                if moves.iter().any(|&allowed_move| _move == allowed_move) {
                     game.push_history(_move);
                     if game.len() >= 400 {
                         data.current_game = None;
