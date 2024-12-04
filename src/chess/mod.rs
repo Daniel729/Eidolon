@@ -231,6 +231,10 @@ impl Game {
         &self.move_stack
     }
 
+    pub fn phase(&self) -> GamePhase {
+        self.phase
+    }
+
     pub fn get_position(&self, position: Position) -> Option<Piece> {
         // SAFETY: position is always valid
         unsafe { *self.board.get_unchecked(position.as_usize()) }
@@ -660,6 +664,11 @@ impl Game {
     }
 
     fn is_endgame(&self) -> bool {
+        if self.phase == GamePhase::Endgame {
+            // When entering the endgame we can't go back
+            return true;
+        }
+
         let mut total_piece_score: u32 = 0;
 
         for row in 0..8 {
@@ -989,6 +998,7 @@ impl std::fmt::Display for Game {
         writeln!(f, "Hash: {:X}", self.hash)?;
         writeln!(f, "Fen: {}", self.fen())?;
         writeln!(f, "PGN: {}", self.get_pgn())?;
+        writeln!(f, "Game phase: {:?}", self.phase)?;
         writeln!(f)?;
 
         for i in (0..8).rev() {

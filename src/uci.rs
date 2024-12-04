@@ -258,6 +258,7 @@ fn command_go(
 }
 
 fn command_position(data: &mut Data, terms: &mut SplitAsciiWhitespace<'_>) -> anyhow::Result<()> {
+    let past_phase = data.current_game.as_ref().map(|game| game.phase());
     let mut add_moves = false;
 
     if let Some(term) = terms.next() {
@@ -323,6 +324,13 @@ fn command_position(data: &mut Data, terms: &mut SplitAsciiWhitespace<'_>) -> an
         }
     } else {
         bail!("Invalid position command");
+    }
+
+    // Clear the cache if the game phase changes (thus invalidating scores)
+    if let Some(past_phase) = past_phase {
+        if past_phase != data.current_game.as_ref().unwrap().phase() {
+            data.cache.clear();
+        }
     }
 
     Ok(())

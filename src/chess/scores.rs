@@ -1,6 +1,7 @@
 // Source: https://www.chessprogramming.org/Simplified_Evaluation_Function
 
-pub const ENDGAME_THRESHOLD: u32 = 1500 + 20000; // 15 pawns + king
+/// 1 King + 1 Queen + 6 pawns / 3 pawns + a minor piece / 1 pawn + rook
+pub const ENDGAME_THRESHOLD: u32 = 1500 + 20000;
 
 pub const PAWN_SCORE_BASE: i16 = 100;
 pub const KNIGHT_SCORE_BASE: i16 = 320;
