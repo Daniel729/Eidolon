@@ -21,6 +21,12 @@ pub struct Piece {
     pub owner: Player,
 }
 
+impl Piece {
+    pub fn new(piece_type: PieceType, owner: Player) -> Self {
+        Self { piece_type, owner }
+    }
+}
+
 impl PieceType {
     pub fn material_value(self) -> u8 {
         match self {

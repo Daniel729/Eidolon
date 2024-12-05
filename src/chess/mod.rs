@@ -377,13 +377,7 @@ impl Game {
                 captured_piece,
             } => {
                 self.set_position(start, None);
-                self.set_position(
-                    end,
-                    Some(Piece {
-                        owner,
-                        piece_type: new_piece,
-                    }),
-                );
+                self.set_position(end, Some(Piece::new(new_piece, owner)));
 
                 if captured_piece.is_some_and(|piece| {
                     piece.piece_type == PieceType::Rook && piece.owner == Player::White
@@ -423,13 +417,7 @@ impl Game {
                 };
                 self.set_position(taken_pawn, None);
                 self.set_position(old_pawn, None);
-                self.set_position(
-                    new_pawn,
-                    Some(Piece {
-                        piece_type: PieceType::Pawn,
-                        owner,
-                    }),
-                );
+                self.set_position(new_pawn, Some(Piece::new(PieceType::Pawn, owner)));
             }
             Move::CastlingLong { owner } => {
                 let row = match owner {
@@ -445,22 +433,11 @@ impl Game {
 
                 self.set_position(old_rook, None);
                 self.set_position(old_king, None);
-                self.set_position(
-                    new_rook,
-                    Some(Piece {
-                        piece_type: PieceType::Rook,
-                        owner,
-                    }),
-                );
+                self.set_position(new_rook, Some(Piece::new(PieceType::Rook, owner)));
+                self.set_position(new_king, Some(Piece::new(PieceType::King, owner)));
 
-                self.set_position(
-                    new_king,
-                    Some(Piece {
-                        piece_type: PieceType::King,
-                        owner,
-                    }),
-                );
                 self.set_king_position(self.current_player, new_king);
+
                 match self.current_player {
                     Player::White => {
                         state.set_white_king_castling_false();
@@ -486,23 +463,11 @@ impl Game {
 
                 self.set_position(old_rook, None);
                 self.set_position(old_king, None);
-                self.set_position(
-                    new_rook,
-                    Some(Piece {
-                        piece_type: PieceType::Rook,
-                        owner,
-                    }),
-                );
-
-                self.set_position(
-                    new_king,
-                    Some(Piece {
-                        piece_type: PieceType::King,
-                        owner,
-                    }),
-                );
+                self.set_position(new_rook, Some(Piece::new(PieceType::Rook, owner)));
+                self.set_position(new_king, Some(Piece::new(PieceType::King, owner)));
 
                 self.set_king_position(self.current_player, new_king);
+
                 match self.current_player {
                     Player::White => {
                         state.set_white_king_castling_false();
@@ -517,7 +482,8 @@ impl Game {
         };
         self.current_player = self.current_player.the_other();
         self.hash ^= zobrist::BLACK_TO_MOVE;
-        self.hash ^= self.state().hash(); // SAFETY: The game will not be longer than 512 moves
+        self.hash ^= self.state().hash();
+        // SAFETY: The game will not be longer than 512 moves
         unsafe {
             self.state.push_unchecked(state);
         }
@@ -553,13 +519,7 @@ impl Game {
                 captured_piece,
                 ..
             } => {
-                self.set_position(
-                    start,
-                    Some(Piece {
-                        piece_type: PieceType::Pawn,
-                        owner,
-                    }),
-                );
+                self.set_position(start, Some(Piece::new(PieceType::Pawn, owner)));
                 self.set_position(end, captured_piece);
             }
             Move::EnPassant {
@@ -583,18 +543,9 @@ impl Game {
                 self.set_position(new_pawn, None);
                 self.set_position(
                     taken_pawn,
-                    Some(Piece {
-                        piece_type: PieceType::Pawn,
-                        owner: owner.the_other(),
-                    }),
+                    Some(Piece::new(PieceType::Pawn, owner.the_other())),
                 );
-                self.set_position(
-                    old_pawn,
-                    Some(Piece {
-                        piece_type: PieceType::Pawn,
-                        owner,
-                    }),
-                );
+                self.set_position(old_pawn, Some(Piece::new(PieceType::Pawn, owner)));
             }
             Move::CastlingLong { owner } => {
                 let row = match owner {
@@ -610,21 +561,8 @@ impl Game {
 
                 self.set_position(new_rook, None);
                 self.set_position(new_king, None);
-                self.set_position(
-                    old_rook,
-                    Some(Piece {
-                        piece_type: PieceType::Rook,
-                        owner,
-                    }),
-                );
-
-                self.set_position(
-                    old_king,
-                    Some(Piece {
-                        piece_type: PieceType::King,
-                        owner,
-                    }),
-                );
+                self.set_position(old_rook, Some(Piece::new(PieceType::Rook, owner)));
+                self.set_position(old_king, Some(Piece::new(PieceType::King, owner)));
 
                 self.set_king_position(owner, old_king);
             }
@@ -642,21 +580,8 @@ impl Game {
 
                 self.set_position(new_rook, None);
                 self.set_position(new_king, None);
-                self.set_position(
-                    old_rook,
-                    Some(Piece {
-                        piece_type: PieceType::Rook,
-                        owner,
-                    }),
-                );
-
-                self.set_position(
-                    old_king,
-                    Some(Piece {
-                        piece_type: PieceType::King,
-                        owner,
-                    }),
-                );
+                self.set_position(old_rook, Some(Piece::new(PieceType::Rook, owner)));
+                self.set_position(old_king, Some(Piece::new(PieceType::King, owner)));
 
                 self.set_king_position(owner, old_king);
             }
@@ -1030,7 +955,7 @@ mod tests {
 
         assert_eq!(
             game.fen(),
-            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -"
+            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
         );
     }
 
