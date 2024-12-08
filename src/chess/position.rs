@@ -72,6 +72,14 @@ impl Position {
     /// i.e. it always lies in 0..64
     #[inline]
     pub fn as_usize(self) -> usize {
-        (self.0 * 8 + self.1) as usize
+        let index = (self.0 * 8 + self.1) as usize;
+
+        // SAFETY: This is an invariant of the Position struct
+
+        unsafe {
+            std::hint::assert_unchecked(index < 64);
+        }
+
+        index
     }
 }

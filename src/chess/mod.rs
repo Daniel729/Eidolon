@@ -274,8 +274,7 @@ impl Game {
     }
 
     pub fn get_position(&self, position: Position) -> Option<Piece> {
-        // SAFETY: position is always valid
-        unsafe { *self.board.get_unchecked(position.as_usize()) }
+        self.board[position.as_usize()]
     }
 
     pub fn state(&self) -> GameState {
@@ -285,21 +284,13 @@ impl Game {
 
     fn set_position(&mut self, position: Position, new_place: Option<Piece>) {
         // SAFETY: position is always valid
-        let (place, place_score_mg, place_score_eg, place_phase, place_hash) = unsafe {
-            (
-                self.board.get_unchecked_mut(position.as_usize()),
-                self.scores
-                    .past_scores_mg
-                    .get_unchecked_mut(position.as_usize()),
-                self.scores
-                    .past_scores_eg
-                    .get_unchecked_mut(position.as_usize()),
-                self.scores
-                    .past_game_phases
-                    .get_unchecked_mut(position.as_usize()),
-                self.past_hashes.get_unchecked_mut(position.as_usize()),
-            )
-        };
+        let (place, place_score_mg, place_score_eg, place_phase, place_hash) = (
+            &mut self.board[position.as_usize()],
+            &mut self.scores.past_scores_mg[position.as_usize()],
+            &mut self.scores.past_scores_eg[position.as_usize()],
+            &mut self.scores.past_game_phases[position.as_usize()],
+            &mut self.past_hashes[position.as_usize()],
+        );
 
         self.hash ^= *place_hash;
 

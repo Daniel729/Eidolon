@@ -12,7 +12,7 @@ pub struct GameState {
 impl GameState {
     #[inline]
     pub fn hash(self) -> u64 {
-        unsafe { *zobrist::STATE.get_unchecked(self.bitfield as usize) }
+        zobrist::STATE[self.bitfield as usize]
     }
 
     #[inline]

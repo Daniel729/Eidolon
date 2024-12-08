@@ -44,17 +44,11 @@ impl PieceType {
 impl Piece {
     pub fn score(self, pos: Position) -> (Score, Score, u8) {
         // SAFETY: Position is always valid
-        let (mg_score, eg_score, phase) = unsafe {
-            (
-                *scores::MG_TABLE
-                    .get_unchecked(self.as_index())
-                    .get_unchecked(pos.as_usize()),
-                *scores::EG_TABLE
-                    .get_unchecked(self.as_index())
-                    .get_unchecked(pos.as_usize()),
-                *scores::GAMEPHASE_INC.get_unchecked(self.as_index()),
-            )
-        };
+        let (mg_score, eg_score, phase) = (
+            scores::MG_TABLE[self.as_index()][pos.as_usize()],
+            scores::EG_TABLE[self.as_index()][pos.as_usize()],
+            scores::GAMEPHASE_INC[self.as_index()],
+        );
 
         (
             mg_score as Score * self.owner as Score,
@@ -67,24 +61,25 @@ impl Piece {
     }
 
     #[inline]
+    /// The return values are between 0 and 11
     pub fn as_index(self) -> usize {
-        // This function is used to index zobrist::PIECE array
-        // The return values are between 0 and 11
         let mut index = self.piece_type as usize;
+
         if self.owner == Player::Black {
             index += 6;
+        }
+
+        // SAFETY: piece_type <= 5 => index <= 11
+
+        unsafe {
+            std::hint::assert_unchecked(index <= 11);
         }
         index
     }
 
     #[inline]
-    pub fn hash(self, pos: Position) -> u64 {
-        // SAFETY: self.as_usize() is always in 0..12 and pos.as_usize() is always in 0..64
-        unsafe {
-            *zobrist::PIECE
-                .get_unchecked(pos.as_usize())
-                .get_unchecked(self.as_index())
-        }
+    pub fn hash(self, position: Position) -> u64 {
+        zobrist::PIECE[position.as_usize()][self.as_index()]
     }
 
     pub fn get_moves(self, mut push: impl FnMut(Move), game: &Game, pos: Position) {
