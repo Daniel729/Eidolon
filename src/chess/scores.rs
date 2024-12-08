@@ -20,7 +20,7 @@ const fn init_table_mg() -> [[i32; 64]; 12] {
         let mut sq = 0;
         while sq < 64 {
             mg_table[i][sq] = MG_VALUE[i] + mg_pesto_table[i][sq ^ 56];
-            mg_table[i + 6][sq] = MG_VALUE[i] + mg_pesto_table[i][sq];
+            mg_table[i + 6][sq] = -(MG_VALUE[i] + mg_pesto_table[i][sq]);
 
             sq += 1;
         }
@@ -49,7 +49,7 @@ const fn init_table_eg() -> [[i32; 64]; 12] {
         let mut sq = 0;
         while sq < 64 {
             eg_table[i][sq] = EG_VALUE[i] + eg_pesto_table[i][sq ^ 56];
-            eg_table[i + 6][sq] = EG_VALUE[i] + eg_pesto_table[i][sq];
+            eg_table[i + 6][sq] = -(EG_VALUE[i] + eg_pesto_table[i][sq]);
 
             sq += 1;
         }

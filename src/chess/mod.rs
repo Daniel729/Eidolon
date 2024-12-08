@@ -283,7 +283,6 @@ impl Game {
     }
 
     fn set_position(&mut self, position: Position, new_place: Option<Piece>) {
-        // SAFETY: position is always valid
         let (place, place_score_mg, place_score_eg, place_phase, place_hash) = (
             &mut self.board[position.as_usize()],
             &mut self.scores.past_scores_mg[position.as_usize()],

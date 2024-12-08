@@ -43,19 +43,13 @@ impl PieceType {
 
 impl Piece {
     pub fn score(self, pos: Position) -> (Score, Score, u8) {
-        // SAFETY: Position is always valid
-        let (mg_score, eg_score, phase) = (
+        (
             scores::MG_TABLE[self.as_index()][pos.as_usize()],
             scores::EG_TABLE[self.as_index()][pos.as_usize()],
             scores::GAMEPHASE_INC[self.as_index()],
-        );
-
-        (
-            mg_score as Score * self.owner as Score,
-            eg_score as Score * self.owner as Score,
-            phase,
         )
     }
+
     pub fn material_value(self) -> u8 {
         self.piece_type.material_value()
     }
