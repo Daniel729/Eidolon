@@ -1,9 +1,10 @@
 use super::move_struct::Move;
 use super::position::Position;
+use super::scores;
 use super::zobrist;
 use super::Score;
 use super::{Game, Player};
-use std::cell::{Cell, OnceCell};
+use std::cell::OnceCell;
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug, PartialOrd, Ord)]
 pub enum PieceType {
@@ -41,21 +42,25 @@ impl PieceType {
 }
 
 impl Piece {
-    pub fn score(self, pos: Position, scores: &[Cell<&[i16; 64]>; 6]) -> Score {
-        let piece_score_array = scores[self.piece_type as usize].get();
-
-        let row = match self.owner {
-            Player::White => 7 - pos.row(),
-            Player::Black => pos.row(),
-        };
-
+    pub fn score(self, pos: Position) -> (Score, Score, u8) {
         // SAFETY: Position is always valid
-        let piece_score = unsafe {
-            let position = Position::new_unsafe(row, pos.col());
-            *piece_score_array.get_unchecked(position.as_usize())
+        let (mg_score, eg_score, phase) = unsafe {
+            (
+                *scores::MG_TABLE
+                    .get_unchecked(self.as_index())
+                    .get_unchecked(pos.as_usize()),
+                *scores::EG_TABLE
+                    .get_unchecked(self.as_index())
+                    .get_unchecked(pos.as_usize()),
+                *scores::GAMEPHASE_INC.get_unchecked(self.as_index()),
+            )
         };
 
-        piece_score * self.owner as Score
+        (
+            mg_score as Score * self.owner as Score,
+            eg_score as Score * self.owner as Score,
+            phase,
+        )
     }
     pub fn material_value(self) -> u8 {
         self.piece_type.material_value()
@@ -440,6 +445,12 @@ impl Piece {
 }
 
 impl std::fmt::Display for Piece {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.as_char())
+    }
+}
+
+impl std::fmt::Debug for Piece {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "{}", self.as_char())
     }

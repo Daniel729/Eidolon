@@ -12,17 +12,8 @@ use gamestate::GameState;
 use move_struct::Move;
 use piece::{Piece, PieceType};
 use position::Position;
-use scores::ENDGAME_THRESHOLD;
-use std::cell::Cell;
 
-pub type Score = i16;
-
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
-pub enum GamePhase {
-    Opening,
-    // Middle,
-    Endgame,
-}
+pub type Score = i32;
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum Player {
@@ -30,21 +21,35 @@ pub enum Player {
     Black = -1,
 }
 
+impl Player {
+    pub fn as_index(self) -> usize {
+        match self {
+            Self::White => 0,
+            Self::Black => 1,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct GameScores {
+    score_mg: Score,
+    past_scores_mg: [Score; 64],
+
+    score_eg: Score,
+    past_scores_eg: [Score; 64],
+
+    game_phase: u8,
+    past_game_phases: [u8; 64],
+}
+
 #[derive(Clone)]
 pub struct Game {
-    score: Score,
+    scores: GameScores,
     current_player: Player,
     move_stack: Vec<Move>,
-    phase: GamePhase,
     hash: u64,
     board: [Option<Piece>; 64],
-    past_scores: [Score; 64],
     past_hashes: [u64; 64],
-    /// Cells are used here in order to allow the changing of the scores
-    /// depending on the game's state, e.g. for the endgame
-    ///
-    /// WARNING: The order of the scores must match the order of the pieces
-    piece_scores: [Cell<&'static [i16; 64]>; 6],
     king_positions: [Position; 2],
     state: ArrayVec<GameState, 512>,
 }
@@ -69,21 +74,19 @@ impl Game {
         let mut terms = fen.split_ascii_whitespace();
 
         let mut hash = 0;
-        let mut score = 0;
+        let mut scores = GameScores {
+            score_mg: 0,
+            past_scores_mg: [0; 64],
+            score_eg: 0,
+            past_scores_eg: [0; 64],
+            game_phase: 0,
+            past_game_phases: [0; 64],
+        };
 
         let mut board = [None; 64];
-        let mut past_scores = [0; 64];
         let mut past_hashes = [0; 64];
         let mut white_king_pos = None;
         let mut black_king_pos = None;
-        let piece_scores: [Cell<&[i16; 64]>; 6] = [
-            Cell::new(&scores::QUEEN_SCORES),
-            Cell::new(&scores::ROOK_SCORES),
-            Cell::new(&scores::BISHOP_SCORES),
-            Cell::new(&scores::KNIGHT_SCORES),
-            Cell::new(&scores::PAWN_SCORES),
-            Cell::new(&scores::KING_SCORES_MIDDLE),
-        ];
 
         let Some(pieces) = terms.next() else {
             bail!("Missing board");
@@ -114,8 +117,17 @@ impl Game {
                     }
                     let position = Position::new_assert(row, col);
                     board[position.as_usize()] = Some(piece);
-                    past_scores[position.as_usize()] = piece.score(position, &piece_scores);
-                    score += past_scores[position.as_usize()];
+
+                    let (delta_mg, delta_eg, phase) = piece.score(position);
+
+                    scores.score_mg += delta_mg;
+                    scores.score_eg += delta_eg;
+                    scores.game_phase += phase;
+
+                    scores.past_scores_mg[position.as_usize()] = delta_mg;
+                    scores.past_scores_eg[position.as_usize()] = delta_eg;
+                    scores.past_game_phases[position.as_usize()] = phase;
+
                     past_hashes[position.as_usize()] = piece.hash(position);
                     hash ^= past_hashes[position.as_usize()];
 
@@ -195,18 +207,14 @@ impl Game {
             move_stack: Vec::with_capacity(1000),
             king_positions: [white_king_pos, black_king_pos],
             current_player,
-            score,
+            scores,
             hash,
             state: ArrayVec::new(),
-            past_scores,
             past_hashes,
-            piece_scores,
-            phase: GamePhase::Opening,
         };
 
         game.state.push(state);
         game.hash ^= state.hash();
-        game.update_phase();
 
         Ok(game)
     }
@@ -224,15 +232,45 @@ impl Game {
     }
 
     pub fn score(&self) -> Score {
-        self.score
+        /* tapered eval */
+        let mg_score = self.scores.score_mg;
+        let eg_score = self.scores.score_eg;
+
+        let mg_phase = self.scores.game_phase.min(24); // in case of early promotion
+
+        let eg_phase = 24 - mg_phase;
+
+        return (mg_score * mg_phase as i32 + eg_score * eg_phase as i32) / 24;
+    }
+
+    #[allow(unused)]
+    pub fn eval_pesto(&self) -> Score {
+        let mut mg = [0, 0];
+        let mut eg = [0, 0];
+        let mut game_phase = 0;
+
+        /* evaluate each piece */
+        for (index, place) in self.board.iter().enumerate() {
+            if let Some(piece) = place {
+                mg[piece.owner.as_index()] += scores::MG_TABLE[piece.as_index()][index];
+                eg[piece.owner.as_index()] += scores::EG_TABLE[piece.as_index()][index];
+
+                game_phase += scores::GAMEPHASE_INC[piece.as_index()];
+            }
+        }
+
+        /* tapered eval */
+        let mg_score = mg[0] - mg[1];
+        let eg_score = eg[0] - eg[1];
+
+        let mg_phase = game_phase.min(24); // in case of early promotion
+        let eg_phase = 24 - mg_phase;
+
+        return (mg_score * mg_phase as i32 + eg_score * eg_phase as i32) / 24;
     }
 
     pub fn move_stack(&self) -> &[Move] {
         &self.move_stack
-    }
-
-    pub fn phase(&self) -> GamePhase {
-        self.phase
     }
 
     pub fn get_position(&self, position: Position) -> Option<Piece> {
@@ -247,28 +285,47 @@ impl Game {
 
     fn set_position(&mut self, position: Position, new_place: Option<Piece>) {
         // SAFETY: position is always valid
-        let (place, place_score, place_hash) = unsafe {
+        let (place, place_score_mg, place_score_eg, place_phase, place_hash) = unsafe {
             (
                 self.board.get_unchecked_mut(position.as_usize()),
-                self.past_scores.get_unchecked_mut(position.as_usize()),
+                self.scores
+                    .past_scores_mg
+                    .get_unchecked_mut(position.as_usize()),
+                self.scores
+                    .past_scores_eg
+                    .get_unchecked_mut(position.as_usize()),
+                self.scores
+                    .past_game_phases
+                    .get_unchecked_mut(position.as_usize()),
                 self.past_hashes.get_unchecked_mut(position.as_usize()),
             )
         };
 
         self.hash ^= *place_hash;
-        self.score -= *place_score;
+
+        self.scores.score_mg -= *place_score_mg;
+        self.scores.score_eg -= *place_score_eg;
+        self.scores.game_phase -= *place_phase;
 
         *place = new_place;
 
-        *place_score = place
-            .map(|piece| piece.score(position, &self.piece_scores))
-            .unwrap_or(0);
+        let (new_score_mg, new_score_eg, new_phase) = new_place
+            .map(|piece| piece.score(position))
+            .unwrap_or((0, 0, 0));
+
+        *place_score_mg = new_score_mg;
+        *place_score_eg = new_score_eg;
+        *place_phase = new_phase;
+
         *place_hash = place
             .map(|piece| piece.hash(position))
             .unwrap_or(zobrist::EMPTY_PLACE);
 
         self.hash ^= *place_hash;
-        self.score += *place_score;
+
+        self.scores.score_mg += *place_score_mg;
+        self.scores.score_eg += *place_score_eg;
+        self.scores.game_phase += *place_phase;
     }
 
     pub fn get_king_position(&self, player: Player) -> Position {
@@ -287,7 +344,6 @@ impl Game {
 
     pub fn push_history(&mut self, _move: Move) {
         self.move_stack.push(_move);
-        self.update_phase();
         self.push(_move);
     }
 
@@ -586,34 +642,6 @@ impl Game {
                 self.set_king_position(owner, old_king);
             }
         };
-    }
-
-    fn is_endgame(&self) -> bool {
-        if self.phase == GamePhase::Endgame {
-            // When entering the endgame we can't go back
-            return true;
-        }
-
-        let mut total_piece_score: u32 = 0;
-
-        for row in 0..8 {
-            for col in 0..8 {
-                let position = Position::new_assert(row, col);
-                if let Some(piece) = self.get_position(position) {
-                    total_piece_score +=
-                        piece.score(position, &self.piece_scores).unsigned_abs() as u32;
-                }
-            }
-        }
-
-        total_piece_score < 2 * ENDGAME_THRESHOLD // because we are counting both sides
-    }
-
-    pub fn update_phase(&mut self) {
-        if self.is_endgame() {
-            self.piece_scores[PieceType::King as usize].set(&scores::KING_SCORES_END);
-            self.phase = GamePhase::Endgame;
-        }
     }
 
     pub fn king_exists(&self, player: Player) -> bool {
@@ -923,7 +951,13 @@ impl std::fmt::Display for Game {
         writeln!(f, "Hash: {:X}", self.hash)?;
         writeln!(f, "Fen: {}", self.fen())?;
         writeln!(f, "PGN: {}", self.get_pgn())?;
-        writeln!(f, "Game phase: {:?}", self.phase)?;
+        writeln!(
+            f,
+            "Eval: mg {}, eg {}, phase {}",
+            self.scores.score_mg, self.scores.score_eg, self.scores.game_phase
+        )?;
+        writeln!(f, "Gamephase: {}", self.scores.game_phase)?;
+
         writeln!(f)?;
 
         for i in (0..8).rev() {

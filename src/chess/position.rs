@@ -29,6 +29,7 @@ impl Position {
     ///
     /// Caller must guarantee that row and col are valid
     #[inline]
+    #[allow(unused)]
     pub unsafe fn new_unsafe(row: i8, col: i8) -> Self {
         debug_assert!((0..8).contains(&row) && (0..8).contains(&col));
         Self(row, col)
