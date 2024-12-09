@@ -167,6 +167,7 @@ fn command_go(
     let mut binc: Option<u64> = None;
     let mut depth: Option<u8> = None;
     let mut move_time: Option<u64> = None;
+    let mut moves_to_go: Option<u64> = None;
     let mut infinite = false;
 
     while let Some(term) = terms.next() {
@@ -177,6 +178,7 @@ fn command_go(
             "binc" => binc = terms.next().and_then(|s| s.parse().ok()),
             "depth" => depth = terms.next().and_then(|s| s.parse().ok()),
             "movetime" => move_time = terms.next().and_then(|s| s.parse().ok()),
+            "movestogo" => moves_to_go = terms.next().and_then(|s| s.parse().ok()),
             "infinite" => infinite = true,
             _ => continue,
         }
@@ -193,17 +195,35 @@ fn command_go(
         let winc = winc.unwrap();
         let binc = binc.unwrap();
 
+        let (fraction, latency) = if let Some(moves_to_go) = moves_to_go {
+            (1.0 / moves_to_go as f64, 0)
+        } else {
+            (FRACTION_OF_TOTAL_TIME, LATENCY_MS_COMPENSATE)
+        };
+
         // We decrease the time to make sure we never run out
-        let white_time =
-            (wtime as f64 * FRACTION_OF_TOTAL_TIME) as u64 + winc - LATENCY_MS_COMPENSATE;
-        let black_time =
-            (btime as f64 * FRACTION_OF_TOTAL_TIME) as u64 + binc - LATENCY_MS_COMPENSATE;
+        let white_time = (wtime as f64 * fraction) as u64 + winc - latency;
+        let black_time = (btime as f64 * fraction) as u64 + binc - latency;
 
         time = if game.player() == Player::White {
             Some(Duration::from_millis(white_time))
         } else {
             Some(Duration::from_millis(black_time))
         };
+    }
+
+    if moves_to_go.is_some() && wtime.is_some() && btime.is_some() {
+        let moves_to_go = moves_to_go.unwrap();
+        let wtime = wtime.unwrap();
+        let btime = btime.unwrap();
+
+        let millis = if game.player() == Player::White {
+            wtime / moves_to_go
+        } else {
+            btime / moves_to_go
+        };
+
+        time = Some(Duration::from_millis(millis));
     }
 
     if let Some(move_time) = move_time {
