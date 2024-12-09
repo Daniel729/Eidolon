@@ -13,7 +13,7 @@ use move_struct::Move;
 use piece::{Piece, PieceType};
 use position::Position;
 
-pub type Score = i32;
+pub type Score = i16;
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum Player {
@@ -240,7 +240,9 @@ impl Game {
 
         let eg_phase = 24 - mg_phase;
 
-        return (mg_score * mg_phase as i32 + eg_score * eg_phase as i32) / 24;
+        let sum = mg_score as i32 * mg_phase as i32 + eg_score as i32 * eg_phase as i32;
+
+        (sum / 24) as Score
     }
 
     #[allow(unused)]
@@ -266,7 +268,9 @@ impl Game {
         let mg_phase = game_phase.min(24); // in case of early promotion
         let eg_phase = 24 - mg_phase;
 
-        return (mg_score * mg_phase as i32 + eg_score * eg_phase as i32) / 24;
+        let sum = mg_score as i32 * mg_phase as i32 + eg_score as i32 * eg_phase as i32;
+
+        (sum / 24) as Score
     }
 
     pub fn move_stack(&self) -> &[Move] {
