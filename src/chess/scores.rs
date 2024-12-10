@@ -62,8 +62,8 @@ const fn init_table_eg() -> [[Score; 64]; 12] {
     eg_table
 }
 
-const MG_VALUE: [Score; 6] = [1025, 477, 365, 337, 82, 0];
-const EG_VALUE: [Score; 6] = [936, 512, 297, 281, 94, 0];
+const MG_VALUE: [Score; 6] = [1025, 477, 365, 337, 82, 5000];
+const EG_VALUE: [Score; 6] = [936, 512, 297, 281, 94, 5000];
 
 #[rustfmt::skip]
 const MG_PAWN_TABLE: [Score; 64] = [
