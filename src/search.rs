@@ -201,7 +201,7 @@ fn get_best_move_score(
 
     let player = game.player();
     let mut moves = ArrayVec::new();
-    game.get_moves(&mut moves, true);
+    game.get_moves(&mut moves, remaining_depth > 1);
 
     if moves.is_empty() {
         if game.king_exists(player) && !game.is_targeted(game.get_king_position(player), player) {
@@ -222,7 +222,7 @@ fn get_best_move_score(
     for (index, &_move) in moves.iter().enumerate() {
         let depth_decrement = decrement(index, moves.len());
 
-        if index <= 2 {
+        if index <= 1 {
             game.push(_move);
             let score = -get_best_move_score(
                 game,
@@ -370,7 +370,7 @@ pub fn get_best_move_entry(
     for (index, &_move) in moves.iter().enumerate() {
         let depth_decrement = decrement(index, moves.len());
 
-        if index <= 2 {
+        if index <= 1 {
             game.push(_move);
             let score = -get_best_move_score(
                 &mut game,
@@ -411,7 +411,7 @@ pub fn get_best_move_entry(
                     &mut game,
                     table,
                     continue_running,
-                    depth - 1,
+                    depth,
                     1,
                     Score::MIN + 1,
                     -score,
@@ -466,12 +466,14 @@ pub fn get_best_move_until_stop(
                 1
             }
         })
-        .unwrap_or(1);
+        .unwrap_or(4);
 
     for depth in starting_depth.. {
         let Some((best_move, best_score, is_only_move)) =
             get_best_move_entry(game.clone(), continue_running, depth, table, &mut history)
         else {
+            table.retain(|_, entry| entry.depth >= 4);
+
             return found_move;
         };
 

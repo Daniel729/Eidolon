@@ -1,5 +1,5 @@
 /// Default transposition table capacity.
-pub const TT_CAPACITY: usize = 10_000_000;
+pub const TT_CAPACITY: usize = 100_000;
 
 /// Source: https://lichess.org/study/rROPNxQX/NucjwPjN
 ///
