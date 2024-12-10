@@ -340,20 +340,24 @@ pub fn get_best_move_entry(
     let mut best_move = None;
     let mut best_score = Score::MIN + 1;
 
-    // Prevent threefold repetition
-    if game.move_stack().len() >= 5
-        && game.move_stack()[game.move_stack().len() - 1]
-            == game.move_stack()[game.move_stack().len() - 5]
-    {
-        let repetition_move = game.move_stack()[game.move_stack().len() - 4];
+    // Handle threefold repetition moves
+    let mut i = 0;
+    while i < moves.len() {
+        let _move = moves[i];
+        game.push(_move);
 
-        for (index, &_move) in moves.iter().enumerate() {
-            if repetition_move == _move {
-                moves.swap_remove(index);
-                break;
-            }
+        if game.times_seen_position() >= 3 {
+            moves.swap_remove(i);
+
+            best_move = Some(_move);
+            best_score = 0;
+        } else {
+            i += 1;
         }
+
+        game.pop(_move);
     }
+
     if let Some(entry) = table.get(&game.hash()) {
         if entry.depth >= depth && entry.flag == NodeType::Exact {
             return Some((entry.pv, entry.score, false));

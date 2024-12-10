@@ -6,10 +6,13 @@ mod piece;
 mod position;
 mod scores;
 
+use std::{collections::HashMap, hash::BuildHasherDefault};
+
 use anyhow::{bail, Context};
 use arrayvec::ArrayVec;
 use gamestate::GameState;
 use move_struct::Move;
+use nohash_hasher::BuildNoHashHasher;
 use piece::{Piece, PieceType};
 use position::Position;
 
@@ -47,6 +50,7 @@ pub struct Game {
     scores: GameScores,
     current_player: Player,
     move_stack: Vec<Move>,
+    hashes: HashMap<u64, u8, BuildNoHashHasher<u64>>,
     hash: u64,
     board: [Option<Piece>; 64],
     past_hashes: [u64; 64],
@@ -205,6 +209,7 @@ impl Game {
         let mut game = Self {
             board,
             move_stack: Vec::with_capacity(1000),
+            hashes: HashMap::with_capacity_and_hasher(1000, BuildHasherDefault::default()),
             king_positions: [white_king_pos, black_king_pos],
             current_player,
             scores,
@@ -215,6 +220,8 @@ impl Game {
 
         game.state.push(state);
         game.hash ^= state.hash();
+
+        game.hashes.insert(game.hash, 1);
 
         Ok(game)
     }
@@ -336,9 +343,18 @@ impl Game {
         }
     }
 
+    pub fn times_seen_position(&self) -> u8 {
+        self.hashes.get(&self.hash).copied().unwrap_or(0)
+    }
+
     pub fn push_history(&mut self, _move: Move) {
         self.move_stack.push(_move);
         self.push(_move);
+
+        self.hashes
+            .entry(self.hash)
+            .and_modify(|e| *e += 1)
+            .or_insert(1);
     }
 
     pub fn push(&mut self, _move: Move) {
