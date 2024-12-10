@@ -34,13 +34,7 @@ pub enum Move {
 impl Move {
     pub fn is_tactical_move(&self) -> bool {
         match self {
-            Self::Normal {
-                piece,
-                captured_piece,
-                ..
-            } => captured_piece.is_some_and(|captured_piece| {
-                piece.material_value() <= captured_piece.material_value()
-            }),
+            Self::Normal { captured_piece, .. } => captured_piece.is_some(),
             Self::Promotion { .. } => true,
             Self::EnPassant { .. } => true,
             _ => false,

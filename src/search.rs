@@ -2,6 +2,7 @@ use crate::chess::{move_struct::Move, Game, Score};
 use arrayvec::ArrayVec;
 use nohash_hasher::BuildNoHashHasher;
 use std::{
+    cmp::Reverse,
     collections::HashMap,
     sync::atomic::{AtomicBool, Ordering::Relaxed},
 };
@@ -23,6 +24,14 @@ pub struct TableEntry {
     flag: NodeType,
 }
 
+fn decrement(index: usize, total: usize) -> u8 {
+    match ((index as f64 / total as f64) * 100.0) as u8 {
+        ..25 => 1,
+        25..50 => 2,
+        50.. => 3,
+    }
+}
+
 /// Order:
 ///
 /// 1. PV move
@@ -42,8 +51,14 @@ fn move_score(
         return 0;
     }
 
-    if killer_move.is_some_and(|killer_move| killer_move == _move) {
-        return 1;
+    if let Some(killer_move) = killer_move {
+        if killer_move == _move {
+            if _move.is_tactical_move() {
+                return 1;
+            } else {
+                return 1000;
+            }
+        }
     }
 
     match _move {
@@ -57,7 +72,7 @@ fn move_score(
             ..
         } => {
             if let Some(captured_piece) = capture {
-                1000 + piece.material_value() as u32 - captured_piece.material_value() as u32
+                1000 - (captured_piece.material_value() as u32) * 10 + piece.material_value() as u32
             } else {
                 10000000 - history[_move.index_history().unwrap()] as u32
             }
@@ -66,12 +81,12 @@ fn move_score(
 }
 
 fn quiescence_search(game: &mut Game, mut alpha: Score, beta: Score, real_depth: u8) -> Score {
-    let current_score = game.score() * (game.player() as Score);
-    alpha = alpha.max(current_score);
-
     if alpha >= beta {
         return beta;
     }
+
+    let current_score = game.score() * (game.player() as Score);
+    alpha = alpha.max(current_score);
 
     let player = game.player();
     let mut moves = ArrayVec::new();
@@ -89,11 +104,37 @@ fn quiescence_search(game: &mut Game, mut alpha: Score, beta: Score, real_depth:
         }
     }
 
-    for &_move in &moves {
-        if !_move.is_tactical_move() {
-            continue;
-        }
+    let mut i = 0;
 
+    while i < moves.len() {
+        if !moves[i].is_tactical_move() {
+            moves.swap_remove(i);
+        } else {
+            i += 1;
+        }
+    }
+
+    moves.sort_by_key(|&_move| match _move {
+        Move::Normal {
+            piece,
+            captured_piece: capture,
+            ..
+        } => {
+            if let Some(captured_piece) = capture {
+                (
+                    Reverse(captured_piece.material_value()),
+                    piece.material_value(),
+                )
+            } else {
+                (Reverse(0), 0)
+            }
+        }
+        Move::Promotion { .. } => (Reverse(u8::MAX), 0),
+        Move::EnPassant { .. } => (Reverse(1), 0),
+        _ => (Reverse(0), 0),
+    });
+
+    for &_move in &moves {
         game.push(_move);
         let score = -quiescence_search(game, -beta, -alpha, real_depth + 1);
         game.pop(_move);
@@ -104,48 +145,6 @@ fn quiescence_search(game: &mut Game, mut alpha: Score, beta: Score, real_depth:
 
         if alpha >= beta {
             return beta;
-        }
-    }
-
-    alpha
-}
-
-/// This function exists in order to improve the performance of the search algorithm
-/// It's the same as get_best_move_score but with a depth always equal to 1
-///
-/// Explanation: due to the nature of the search tree (exponential growth), the majority
-/// of the time is spent in this function, so it's eliminating unnecessary branches
-fn get_best_move_score_depth_1(
-    game: &mut Game,
-    mut alpha: Score,
-    beta: Score,
-    real_depth: u8,
-) -> Score {
-    let player = game.player();
-    let mut moves = ArrayVec::new();
-    game.get_moves(&mut moves, false);
-
-    if moves.is_empty() {
-        if game.king_exists(player) && !game.is_targeted(game.get_king_position(player), player) {
-            return 0;
-        } else {
-            // The earlier the mate the worse the score for the losing player
-            // This is not a real mate, so it's score reflects that
-            return Score::MIN + 2000 + real_depth as Score;
-        }
-    }
-
-    for &_move in &moves {
-        game.push(_move);
-        let score = -quiescence_search(game, -beta, -alpha, real_depth + 1);
-        game.pop(_move);
-
-        if score > alpha {
-            alpha = score;
-        }
-
-        if alpha >= beta {
-            break;
         }
     }
 
@@ -196,9 +195,7 @@ fn get_best_move_score(
         pv_move = entry.pv;
     }
 
-    if remaining_depth == 1 {
-        return Some(get_best_move_score_depth_1(game, alpha, beta, real_depth));
-    } else if remaining_depth == 0 {
+    if remaining_depth == 0 {
         return Some(quiescence_search(game, alpha, beta, real_depth));
     }
 
@@ -215,14 +212,16 @@ fn get_best_move_score(
         }
     }
 
-    moves.sort_by_cached_key(|a| {
-        move_score(*a, pv_move, killer_moves[real_depth as usize], history)
+    moves.sort_by_cached_key(|&_move| {
+        move_score(_move, pv_move, killer_moves[real_depth as usize], history)
     });
 
     let mut best_move = None;
     let mut best_score = Score::MIN;
 
     for (index, &_move) in moves.iter().enumerate() {
+        let depth_decrement = decrement(index, moves.len());
+
         if index <= 2 {
             game.push(_move);
             let score = -get_best_move_score(
@@ -251,7 +250,7 @@ fn get_best_move_score(
                 game,
                 table,
                 continue_running,
-                remaining_depth - 1,
+                remaining_depth.saturating_sub(depth_decrement),
                 real_depth + 1,
                 -alpha - 1,
                 -alpha,
@@ -362,9 +361,11 @@ pub fn get_best_move_entry(
     }
 
     let pv_move = table.get(&game.hash()).and_then(|entry| entry.pv);
-    moves.sort_by_cached_key(|a| move_score(*a, pv_move, None, history));
+    moves.sort_by_cached_key(|&_move| move_score(_move, pv_move, None, history));
 
     for (index, &_move) in moves.iter().enumerate() {
+        let depth_decrement = decrement(index, moves.len());
+
         if index <= 2 {
             game.push(_move);
             let score = -get_best_move_score(
@@ -391,7 +392,7 @@ pub fn get_best_move_entry(
                 &mut game,
                 table,
                 continue_running,
-                depth - 1,
+                depth.saturating_sub(depth_decrement),
                 1,
                 -best_score - 1,
                 -best_score,
