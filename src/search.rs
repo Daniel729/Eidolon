@@ -200,6 +200,28 @@ fn get_best_move_score(
     }
 
     let player = game.player();
+
+    // Null move pruning
+    if !game.is_targeted(game.get_king_position(player), player) && remaining_depth > 3 {
+        game.push_null();
+        let score = -get_best_move_score(
+            game,
+            table,
+            continue_running,
+            remaining_depth - 3,
+            real_depth + 1,
+            -beta,
+            -beta + 1,
+            killer_moves,
+            history,
+        )?;
+        game.pop_null();
+
+        if score >= beta {
+            return Some(beta);
+        }
+    }
+
     let mut moves = ArrayVec::new();
     game.get_moves(&mut moves, remaining_depth > 1);
 
@@ -486,7 +508,7 @@ pub fn get_best_move_until_stop(
         println!("info score cp {}", best_score);
         println!("info nodes {}", table.len());
         print!("info pv ");
-        for _ in 0..depth {
+        for _ in 0..depth - 1 {
             if let Some(entry) = table.get(&hash) {
                 if let Some(pv) = entry.pv {
                     game_clone.push(pv);

@@ -357,6 +357,15 @@ impl Game {
             .or_insert(1);
     }
 
+    pub fn push_null(&mut self) {
+        self.current_player = self.current_player.the_other();
+        self.hash ^= zobrist::BLACK_TO_MOVE;
+    }
+
+    pub fn pop_null(&mut self) {
+        self.push_null();
+    }
+
     pub fn push(&mut self, _move: Move) {
         let mut state = self.state();
         state.set_en_passant(8);
