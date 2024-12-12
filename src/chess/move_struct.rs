@@ -277,7 +277,32 @@ impl std::fmt::Debug for Move {
             ),
             Self::CastlingLong { owner } => write!(f, "castling long {:?} ", *owner),
             Self::CastlingShort { owner } => write!(f, "castling short {:?} ", *owner),
-            _ => write!(f, "not supported"),
+            Self::EnPassant {
+                owner,
+                start_col,
+                end_col,
+            } => write!(
+                f,
+                "en passant {:?} from {} to {} ",
+                *owner, start_col, end_col
+            ),
+            Self::Promotion {
+                owner,
+                new_piece,
+                start,
+                end,
+                captured_piece,
+            } => write!(
+                f,
+                "promotion {:?} {:?} from {} {} to {} {}, captured {:?} ",
+                *owner,
+                new_piece,
+                start.row(),
+                start.col(),
+                end.row(),
+                end.col(),
+                captured_piece.map(|piece| format!("{:?} {:?}", piece.owner, piece.piece_type))
+            ),
         }
     }
 }
