@@ -29,6 +29,21 @@ impl Data {
     }
 }
 
+macro_rules! send_uci {
+    ($($arg:tt)*) => {
+        {
+            let string = format!($($arg)*);
+
+            println!("{}", string);
+
+            #[cfg(feature = "log")]
+            log::info!("[OUTPUT] {}", string);
+        }
+    };
+}
+
+pub(crate) use send_uci;
+
 /// Enter uci mode and wait for commands
 ///
 /// Specification of UCI standard source
@@ -44,6 +59,9 @@ pub fn uci_talk() -> anyhow::Result<()> {
 
     'main_loop: for line in stdin().lines() {
         let line = line.context("Failed to read line from stdin")?;
+
+        #[cfg(feature = "log")]
+        log::info!("[INPUT] {}", line);
 
         let mut terms = line.split_ascii_whitespace();
 
@@ -68,34 +86,34 @@ pub fn uci_talk() -> anyhow::Result<()> {
                 }
                 "position" => {
                     if search_is_running.load(Relaxed) {
-                        println!("error: search is still running, enter 'stop' to stop it");
+                        send_uci!("error: search is still running, enter 'stop' to stop it");
                     } else {
                         let mut data = data.lock().unwrap();
                         if let Err(err) = command_position(&mut data, &mut terms) {
-                            println!("error: {}", err);
+                            send_uci!("error: {}", err);
                         };
                     }
                 }
                 "go" => {
                     if search_is_running.load(Relaxed) {
-                        println!("error: search is still running, enter 'stop' to stop it");
+                        send_uci!("error: search is still running, enter 'stop' to stop it");
                     } else {
                         // Create new bool such that if the old sleep threaed is still runnning
                         // it won't affect this new search
                         search_is_running = Arc::new(AtomicBool::new(false));
                         match command_go(&data, &mut terms, &search_is_running) {
                             Ok(thread) => search_thread = Some(thread),
-                            Err(err) => println!("error: {}", err),
+                            Err(err) => send_uci!("error: {}", err),
                         }
                     }
                 }
                 "show" | "d" => {
                     if search_is_running.load(Relaxed) {
-                        println!("error: search is still running, enter 'stop' to stop it");
+                        send_uci!("error: search is still running, enter 'stop' to stop it");
                     } else {
                         let data = data.lock().unwrap();
                         if let Err(err) = command_show(&data) {
-                            println!("error: {}", err);
+                            send_uci!("error: {}", err);
                         };
                     }
                 }
@@ -127,9 +145,9 @@ pub fn uci_talk() -> anyhow::Result<()> {
 }
 
 fn command_uci() {
-    println!("id name rustybait");
-    println!("id author Malanca Daniel");
-    println!("uciok");
+    send_uci!("id name rustybait");
+    send_uci!("id author Malanca Daniel");
+    send_uci!("uciok");
 }
 
 fn command_ucinewgame(data: &mut Data) {
@@ -138,12 +156,12 @@ fn command_ucinewgame(data: &mut Data) {
 }
 
 fn command_isready() {
-    println!("readyok");
+    send_uci!("readyok");
 }
 
 fn command_show(data: &Data) -> anyhow::Result<()> {
     if let Some(game) = data.current_game.as_ref() {
-        println!("{}", game);
+        send_uci!("{}", game);
     } else {
         bail!("No game to show, please set a position first");
     }
@@ -235,7 +253,7 @@ fn command_go(
             // Cut 5 ms from the time because sleep always takes more than given
             let time = time.saturating_sub(Duration::from_millis(5));
 
-            println!("info time {:?}", time.as_millis());
+            send_uci!("info time {:?}", time.as_millis());
 
             // This thread might stop a future search if the current one stops by itself
             // Thus when a new search is started, a new atomic bool is created
@@ -264,9 +282,9 @@ fn command_go(
             );
 
             if let Some(best_move) = best_move {
-                println!("bestmove {}", best_move.uci_notation());
+                send_uci!("bestmove {}", best_move.uci_notation());
             } else {
-                println!("bestmove none");
+                send_uci!("bestmove none");
             }
 
             search_is_running.store(false, Relaxed);

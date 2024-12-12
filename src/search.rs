@@ -1,4 +1,7 @@
-use crate::chess::{move_struct::Move, Game, Score};
+use crate::{
+    chess::{move_struct::Move, Game, Score},
+    uci::send_uci,
+};
 use arrayvec::ArrayVec;
 use nohash_hasher::BuildNoHashHasher;
 use std::{
@@ -490,6 +493,8 @@ pub fn get_best_move_until_stop(
         })
         .unwrap_or(4);
 
+    let initial_nodes = table.len();
+
     for depth in starting_depth.. {
         let Some((best_move, best_score, is_only_move)) =
             get_best_move_entry(game.clone(), continue_running, depth, table, &mut history)
@@ -504,24 +509,36 @@ pub fn get_best_move_until_stop(
 
         found_move = best_move;
 
-        println!("info depth {}", depth);
-        println!("info score cp {}", best_score);
-        println!("info nodes {}", table.len());
-        print!("info pv ");
-        for _ in 0..depth - 1 {
-            if let Some(entry) = table.get(&hash) {
-                if let Some(pv) = entry.pv {
-                    game_clone.push(pv);
-                    print!("{} ", pv.uci_notation());
-                    hash = game_clone.hash();
-                } else {
-                    break;
-                }
-            } else {
+        let mut info = format_args!(
+            "info depth {} score cp {} nodes {} pv ",
+            depth,
+            best_score,
+            table.len() - initial_nodes
+        )
+        .to_string();
+
+        for _ in 0..depth {
+            let Some(entry) = table.get(&hash) else {
+                break;
+            };
+
+            let Some(pv) = entry.pv else {
+                break;
+            };
+
+            if entry.depth <= 1 {
                 break;
             }
+
+            game_clone.push(pv);
+
+            info.push_str(&pv.uci_notation());
+            info.push(' ');
+
+            hash = game_clone.hash();
         }
-        println!();
+
+        send_uci!("{}", info);
 
         // If mate can be forced, or there is only a single move available, stop searching
         if max_depth.is_some_and(|d| d == depth)

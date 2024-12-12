@@ -6,14 +6,12 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0"
 arrayvec = "0.7"
+log = { version = "0.4.22", default-features = false, optional = true }
 nohash-hasher = "0.2"
+simplelog = { version = "0.12.2", default-features = false, optional = true }
+
+[features]
+log = ["dep:log", "dep:simplelog"]
 
 [profile.release]
 debug = "full"
-
-[profile.release-lto]
-# We want our engine to be as fast as possible
-inherits = "release"
-lto = true
-codegen-units = 1
-panic = "abort"

@@ -23,6 +23,17 @@ where
 }
 
 fn main() -> anyhow::Result<()> {
+    #[cfg(feature = "log")]
+    simplelog::WriteLogger::init(
+        simplelog::LevelFilter::Info,
+        simplelog::Config::default(),
+        std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .append(true)
+            .open("/tmp/rustybait_uci.log")?,
+    )?;
+
     let mut args = std::env::args();
     args.next();
 
