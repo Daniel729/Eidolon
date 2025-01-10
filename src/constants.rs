@@ -1,11 +1,39 @@
-/// Default transposition table capacity.
-pub const TT_CAPACITY: usize = 100_000;
+use std::sync::OnceLock;
+
+use crate::chess::Score;
+
+/// Size of the transposition table in megabytes.
+pub const TT_MEGABYTES: usize = 64;
+
+/// Real capacity obtained at runtime
+/// At the moment of writing this, this value should be set to half of the total capacity of the hashtable,
+/// which makes sure that no reallocation takes place. This is not a guarantee of the API.
+pub static TT_REAL_CAPACITY: OnceLock<usize> = OnceLock::new();
+
+/// Transposition table capacity. This formula is valid at the time of writing this on my machine.
+pub const TT_CAPACITY: usize = TT_MEGABYTES * 1024 * 1024 * 7
+    / 8
+    / size_of::<crate::search::TableEntry>().next_multiple_of(16);
+
+/// Starting depth for iterative deepening.
+pub const STARTING_DEPTH: u16 = 1;
+
+/// Number of stored PV moves in each entry of the transposition table.
+pub const PVS: usize = 6;
+
+/// Threshold for drawing a game by repetition.
+pub const THREEFOLD_NUM: u8 = 2;
+
+/// Centipawn value of threefold repetition draw.
+pub const CONTEMPT_FACTOR: Score = 0;
+
+/// Scaling factor for history heuristic values.
+pub const HISTORY_SCALE: f64 = 1000.0;
 
 /// Source: https://lichess.org/study/rROPNxQX/NucjwPjN
 ///
-/// This game does not have a drawn-out endgame \
-/// It is a good test for the engine's opening and midgame play
-/// Also used for unit tests
+/// Used for unit tests
+#[allow(unused)]
 pub const TESTING_GAME: &str = "g1f3 g8f6 c2c4 g7g6 b1c3 f8g7 d2d4 e8g8 c1f4 d7d5 d1b3 d5c4
                 b3c4 c7c6 e2e4 b8d7 a1d1 d7b6 c4c5 c8g4 f4g5 b6a4 c5a3 a4c3 
                 b2c3 f6e4 g5e7 d8b6 f1c4 e4c3 e7c5 f8e8 e1f1 g4e6 c5b6 e6c4 

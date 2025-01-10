@@ -1,7 +1,9 @@
 pub mod move_struct;
 pub mod zobrist;
 
+mod deltas;
 mod gamestate;
+mod move_generator;
 mod piece;
 mod position;
 mod scores;
@@ -11,6 +13,7 @@ use std::{collections::HashMap, hash::BuildHasherDefault};
 use anyhow::{bail, Context};
 use arrayvec::ArrayVec;
 use gamestate::GameState;
+use move_generator::get_moves;
 use move_struct::Move;
 use nohash_hasher::BuildNoHashHasher;
 use piece::{Piece, PieceType};
@@ -22,15 +25,6 @@ pub type Score = i16;
 pub enum Player {
     White = 1,
     Black = -1,
-}
-
-impl Player {
-    pub fn as_index(self) -> usize {
-        match self {
-            Self::White => 0,
-            Self::Black => 1,
-        }
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -49,16 +43,24 @@ struct GameScores {
 pub struct Game {
     scores: GameScores,
     current_player: Player,
-    move_stack: Vec<Move>,
+    move_stack: ArrayVec<Move, 400>,
     hashes: HashMap<u64, u8, BuildNoHashHasher<u64>>,
     hash: u64,
     board: [Option<Piece>; 64],
     past_hashes: [u64; 64],
     king_positions: [Position; 2],
     state: ArrayVec<GameState, 512>,
+    generated_moves: u64,
 }
 
 impl Player {
+    pub fn as_index(&self) -> usize {
+        match self {
+            Self::White => 0,
+            Self::Black => 1,
+        }
+    }
+
     pub fn the_other(&self) -> Self {
         match self {
             Self::White => Self::Black,
@@ -77,20 +79,25 @@ impl Game {
     pub fn new(fen: &str) -> anyhow::Result<Self> {
         let mut terms = fen.split_ascii_whitespace();
 
-        let mut hash = 0;
-        let mut scores = GameScores {
-            score_mg: 0,
-            past_scores_mg: [0; 64],
-            score_eg: 0,
-            past_scores_eg: [0; 64],
-            game_phase: 0,
-            past_game_phases: [0; 64],
+        let mut game = Self {
+            scores: GameScores {
+                score_mg: 0,
+                past_scores_mg: [0; 64],
+                score_eg: 0,
+                past_scores_eg: [0; 64],
+                game_phase: 0,
+                past_game_phases: [0; 64],
+            },
+            current_player: Player::White,
+            board: [None; 64],
+            move_stack: ArrayVec::new(),
+            hashes: HashMap::with_hasher(BuildHasherDefault::default()),
+            king_positions: [Position::new_assert(0, 0), Position::new_assert(0, 0)],
+            hash: 0,
+            state: ArrayVec::new(),
+            past_hashes: [0; 64],
+            generated_moves: 0,
         };
-
-        let mut board = [None; 64];
-        let mut past_hashes = [0; 64];
-        let mut white_king_pos = None;
-        let mut black_king_pos = None;
 
         let Some(pieces) = terms.next() else {
             bail!("Missing board");
@@ -112,37 +119,25 @@ impl Game {
                     if col == 8 {
                         bail!("Too many columns");
                     }
-                    let piece = Piece::from_char_ascii(piece).with_context(|| "Invalid piece")?;
-                    if piece.piece_type == PieceType::King {
-                        match piece.owner {
-                            Player::White => white_king_pos = Some(Position::new_assert(row, col)),
-                            Player::Black => black_king_pos = Some(Position::new_assert(row, col)),
-                        }
-                    }
+
                     let position = Position::new_assert(row, col);
-                    board[position.as_usize()] = Some(piece);
+                    let piece = Piece::from_char_ascii(piece).with_context(|| "Invalid piece")?;
 
-                    let (delta_mg, delta_eg, phase) = piece.score(position);
+                    if piece.piece_type == PieceType::King {
+                        game.set_king_position(piece.owner, position);
+                    }
 
-                    scores.score_mg += delta_mg;
-                    scores.score_eg += delta_eg;
-                    scores.game_phase += phase;
-
-                    scores.past_scores_mg[position.as_usize()] = delta_mg;
-                    scores.past_scores_eg[position.as_usize()] = delta_eg;
-                    scores.past_game_phases[position.as_usize()] = phase;
-
-                    past_hashes[position.as_usize()] = piece.hash(position);
-                    hash ^= past_hashes[position.as_usize()];
+                    game.set_position(position, Some(piece));
 
                     col += 1;
                 }
+
                 empty_count if character.is_ascii_digit() => {
                     let count = (empty_count as u8 - b'0') as i8;
+
                     for i in 0..count {
                         let position = Position::new_assert(row, col + i);
-                        past_hashes[position.as_usize()] = zobrist::EMPTY_PLACE;
-                        hash ^= past_hashes[position.as_usize()];
+                        game.set_position(position, None);
                     }
 
                     col += count;
@@ -165,8 +160,10 @@ impl Game {
             _ => bail!("Invalid player"),
         };
 
+        game.current_player = current_player;
+
         if current_player == Player::Black {
-            hash ^= zobrist::BLACK_TO_MOVE;
+            game.hash ^= zobrist::BLACK_TO_MOVE;
         }
 
         let mut state = GameState::default();
@@ -198,26 +195,6 @@ impl Game {
             }
         }
 
-        let Some(white_king_pos) = white_king_pos else {
-            bail!("White king not found");
-        };
-
-        let Some(black_king_pos) = black_king_pos else {
-            bail!("Black king not found");
-        };
-
-        let mut game = Self {
-            board,
-            move_stack: Vec::with_capacity(1000),
-            hashes: HashMap::with_capacity_and_hasher(1000, BuildHasherDefault::default()),
-            king_positions: [white_king_pos, black_king_pos],
-            current_player,
-            scores,
-            hash,
-            state: ArrayVec::new(),
-            past_hashes,
-        };
-
         game.state.push(state);
         game.hash ^= state.hash();
 
@@ -239,7 +216,6 @@ impl Game {
     }
 
     pub fn score(&self) -> Score {
-        /* tapered eval */
         let mg_score = self.scores.score_mg;
         let eg_score = self.scores.score_eg;
 
@@ -252,40 +228,8 @@ impl Game {
         (sum / 24) as Score
     }
 
-    #[allow(unused)]
-    pub fn eval_pesto(&self) -> Score {
-        let mut mg = [0, 0];
-        let mut eg = [0, 0];
-        let mut game_phase = 0;
-
-        /* evaluate each piece */
-        for (index, place) in self.board.iter().enumerate() {
-            if let Some(piece) = place {
-                mg[piece.owner.as_index()] += scores::MG_TABLE[piece.as_index()][index];
-                eg[piece.owner.as_index()] += scores::EG_TABLE[piece.as_index()][index];
-
-                game_phase += scores::GAMEPHASE_INC[piece.as_index()];
-            }
-        }
-
-        /* tapered eval */
-        let mg_score = mg[0] - mg[1];
-        let eg_score = eg[0] - eg[1];
-
-        let mg_phase = game_phase.min(24); // in case of early promotion
-        let eg_phase = 24 - mg_phase;
-
-        let sum = mg_score as i32 * mg_phase as i32 + eg_score as i32 * eg_phase as i32;
-
-        (sum / 24) as Score
-    }
-
-    pub fn move_stack(&self) -> &[Move] {
-        &self.move_stack
-    }
-
     pub fn get_position(&self, position: Position) -> Option<Piece> {
-        self.board[position.as_usize()]
+        self.board[position.as_index()]
     }
 
     pub fn state(&self) -> GameState {
@@ -293,13 +237,48 @@ impl Game {
         unsafe { *self.state.last().unwrap_unchecked() }
     }
 
+    pub fn in_check(&self) -> bool {
+        let player = self.current_player;
+
+        self.is_targeted(self.get_king_position(player), player)
+    }
+
+    pub fn get_king_position(&self, player: Player) -> Position {
+        self.king_positions[player.as_index()]
+    }
+
+    pub fn set_king_position(&mut self, player: Player, position: Position) {
+        self.king_positions[player.as_index()] = position;
+    }
+
+    pub fn times_seen_position(&self) -> u8 {
+        self.hashes.get(&self.hash).copied().unwrap_or(0)
+    }
+
+    pub fn set_seen_positions_once(&mut self) {
+        self.hashes.iter_mut().for_each(|(_, v)| {
+            if *v > 1 {
+                *v = 1;
+            }
+        });
+    }
+
+    pub fn generated_moves(&self) -> u64 {
+        self.generated_moves
+    }
+
+    #[allow(unused)]
+    pub fn move_stack(&self) -> &[Move] {
+        &self.move_stack
+    }
+
     fn set_position(&mut self, position: Position, new_place: Option<Piece>) {
         let (place, place_score_mg, place_score_eg, place_phase, place_hash) = (
-            &mut self.board[position.as_usize()],
-            &mut self.scores.past_scores_mg[position.as_usize()],
-            &mut self.scores.past_scores_eg[position.as_usize()],
-            &mut self.scores.past_game_phases[position.as_usize()],
-            &mut self.past_hashes[position.as_usize()],
+            &mut self.board[position.as_index()],
+            &mut self.scores.past_scores_mg[position.as_index()],
+            &mut self.scores.past_scores_eg[position.as_index()],
+            &mut self.scores.past_game_phases[position.as_index()],
+            &mut self.past_hashes[position.as_index()],
         );
 
         self.hash ^= *place_hash;
@@ -329,24 +308,6 @@ impl Game {
         self.scores.game_phase += *place_phase;
     }
 
-    pub fn get_king_position(&self, player: Player) -> Position {
-        match player {
-            Player::White => self.king_positions[0],
-            Player::Black => self.king_positions[1],
-        }
-    }
-
-    fn set_king_position(&mut self, player: Player, position: Position) {
-        match player {
-            Player::White => self.king_positions[0] = position,
-            Player::Black => self.king_positions[1] = position,
-        }
-    }
-
-    pub fn times_seen_position(&self) -> u8 {
-        self.hashes.get(&self.hash).copied().unwrap_or(0)
-    }
-
     pub fn push_history(&mut self, _move: Move) {
         self.move_stack.push(_move);
         self.push(_move);
@@ -357,15 +318,40 @@ impl Game {
             .or_insert(1);
     }
 
+    pub fn pop_history(&mut self) {
+        let hash = self.hash;
+
+        self.hashes.entry(hash).and_modify(|e| *e -= 1);
+
+        if self.hashes[&hash] == 0 {
+            self.hashes.remove(&hash);
+        }
+
+        let _move = self.move_stack.pop().unwrap();
+        self.pop(_move);
+    }
+
     pub fn push_null(&mut self) {
         self.current_player = self.current_player.the_other();
+
+        let mut state = self.state();
+        state.set_en_passant(8);
+
+        self.state.push(state);
+
         self.hash ^= zobrist::BLACK_TO_MOVE;
     }
 
     pub fn pop_null(&mut self) {
-        self.push_null();
+        self.hash ^= zobrist::BLACK_TO_MOVE;
+
+        self.state.pop();
+
+        self.current_player = self.current_player.the_other();
     }
 
+    // Inlining this provides significant performance improvements
+    #[inline(always)]
     pub fn push(&mut self, _move: Move) {
         let mut state = self.state();
         state.set_en_passant(8);
@@ -565,10 +551,11 @@ impl Game {
         self.hash ^= self.state().hash();
     }
 
+    // Inlining this provides significant performance improvements
+    #[inline(always)]
     pub fn pop(&mut self, _move: Move) {
         self.hash ^= self.state().hash();
-        // self.state.pop() without verification for being empty
-        self.state.truncate(self.len().saturating_sub(1));
+        self.state.pop();
         self.hash ^= self.state().hash();
         self.hash ^= zobrist::BLACK_TO_MOVE;
         self.current_player = self.current_player.the_other();
@@ -668,9 +655,14 @@ impl Game {
             .is_some_and(|piece| piece.piece_type == PieceType::King)
     }
 
-    /// `moves` will be cleared by this function to be sure it has room for all moves
-    pub fn get_moves(&mut self, moves: &mut ArrayVec<Move, 256>, verify_king: bool) {
-        moves.clear();
+    /// `moves` must be empty in order to be filled with moves
+    // Inlining this provides small performance improvements
+    #[inline(always)]
+    pub fn get_moves_main(&mut self, moves: &mut ArrayVec<Move, 256>) {
+        assert!(moves.is_empty());
+
+        self.generated_moves += 1;
+
         if !self.king_exists(self.current_player) {
             // no available moves;
             return;
@@ -689,44 +681,78 @@ impl Game {
                 let pos = Position::new_assert(row, col);
                 if let Some(piece) = self.get_position(pos) {
                     if piece.owner == self.current_player {
-                        piece.get_moves(&mut push, self, pos);
+                        get_moves(&mut push, self, pos, piece);
                     }
                 }
             }
         }
 
-        // If verify_king then remove moves which put the king in check (invalid moves)
+        // Remove moves which put the king in check (invalid moves)
         // We remove invalid moves by overwriting them with the following valid moves
-        if verify_king {
-            let player = self.current_player;
-            let king_position = self.get_king_position(player);
-            let is_king_targeted = self.is_targeted(king_position, player);
-            let mut keep_index = 0;
-            for index in 0..moves.len() {
-                let _move = moves[index];
+        let player = self.current_player;
+        let king_position = self.get_king_position(player);
+        let is_king_targeted = self.is_targeted(king_position, player);
+        let mut keep_index = 0;
 
-                if !is_king_targeted {
-                    if let Move::Normal { start, .. } = _move {
-                        let delta_col = start.col() - king_position.col();
-                        let delta_row = start.row() - king_position.row();
-                        if delta_col != 0 && delta_row != 0 && delta_col.abs() != delta_row.abs() {
-                            moves[keep_index] = _move;
-                            keep_index += 1;
-                            continue;
-                        }
+        for index in 0..moves.len() {
+            let _move = moves[index];
+
+            if !is_king_targeted {
+                if let Move::Normal { start, .. } = _move {
+                    let delta_col = start.col() - king_position.col();
+                    let delta_row = start.row() - king_position.row();
+                    if delta_col != 0 && delta_row != 0 && delta_col.abs() != delta_row.abs() {
+                        moves[keep_index] = _move;
+                        keep_index += 1;
+                        continue;
                     }
-                }
-
-                self.push(_move);
-                let condition = !self.is_targeted(self.get_king_position(player), player);
-                self.pop(_move);
-                if condition {
-                    moves[keep_index] = _move;
-                    keep_index += 1;
                 }
             }
 
-            moves.truncate(keep_index);
+            self.push(_move);
+            let condition = !self.is_targeted(self.get_king_position(player), player);
+            self.pop(_move);
+            if condition {
+                moves[keep_index] = _move;
+                keep_index += 1;
+            }
+        }
+
+        moves.truncate(keep_index);
+    }
+    /// `moves` must be empty in order to be filled with moves
+    // Inlining this provides small performance improvements
+    #[inline(always)]
+    pub fn get_moves_quiescence(&mut self, moves: &mut ArrayVec<Move, 256>) {
+        assert!(moves.is_empty());
+
+        self.generated_moves += 1;
+
+        if !self.king_exists(self.current_player) {
+            // no available moves;
+            return;
+        }
+
+        let mut push = |_move: Move| {
+            // SAFETY: The number of possible moves on the board at any given time
+            // will never exceed the arrays capacity (256)
+            // TODO valgrind error ?
+            unsafe {
+                if _move.is_tactical_move() {
+                    moves.push_unchecked(_move);
+                }
+            }
+        };
+
+        for row in 0..8 {
+            for col in 0..8 {
+                let pos = Position::new_assert(row, col);
+                if let Some(piece) = self.get_position(pos) {
+                    if piece.owner == self.current_player {
+                        get_moves(&mut push, self, pos, piece);
+                    }
+                }
+            }
         }
     }
 
@@ -737,38 +763,22 @@ impl Game {
     /// Thus I considered it unnecessary to verify if the square is targeted by a king,
     /// since I already verify that moves don't put kings near each other and a king blocking
     /// a castling move is so unlikely I don't want to waste time on it.
-    pub fn is_targeted(&self, position: Position, player: Player) -> bool {
-        // Verifiy for kings
-        for delta in [
-            (1, 0),
-            (0, 1),
-            (-1, 0),
-            (0, -1),
-            (1, 1),
-            (-1, 1),
-            (1, -1),
-            (-1, -1),
-        ] {
-            if let Some(new_pos) = position.add(delta) {
-                if self.get_position(new_pos).is_some_and(|piece| {
-                    piece.owner != player && piece.piece_type == PieceType::King
-                }) {
-                    return true;
+    fn is_targeted(&self, position: Position, player: Player) -> bool {
+        // Verifiy for kings - seems unnecessary, so it's disabled
+        if false {
+            for delta in deltas::DELTA_KING {
+                if let Some(new_pos) = position.add(delta) {
+                    if self.get_position(new_pos).is_some_and(|piece| {
+                        piece.owner != player && piece.piece_type == PieceType::King
+                    }) {
+                        return true;
+                    }
                 }
             }
         }
 
         // Verify for knights
-        for delta in [
-            (1, 2),
-            (2, 1),
-            (-1, -2),
-            (-2, -1),
-            (1, -2),
-            (-2, 1),
-            (-1, 2),
-            (2, -1),
-        ] {
+        for delta in deltas::DELTA_KNIGHT {
             if let Some(new_pos) = position.add(delta) {
                 if self.get_position(new_pos).is_some_and(|piece| {
                     piece.owner != player && piece.piece_type == PieceType::Knight
@@ -839,20 +849,20 @@ impl Game {
         search_enemies_loops![
             PieceType::Rook,
             PieceType::Queen,
-            (1..).map(|x| (0, x)),
-            (1..).map(|x| (0, -x)),
-            (1..).map(|x| (x, 0)),
-            (1..).map(|x| (-x, 0))
+            deltas::DELTA_ROOK_1,
+            deltas::DELTA_ROOK_2,
+            deltas::DELTA_ROOK_3,
+            deltas::DELTA_ROOK_4
         ];
 
         // Verify diagonals for bishops/queens
         search_enemies_loops![
             PieceType::Bishop,
             PieceType::Queen,
-            (1..).map(|x| (x, x)),
-            (1..).map(|x| (-x, -x)),
-            (1..).map(|x| (x, -x)),
-            (1..).map(|x| (-x, x))
+            deltas::DELTA_BISHOP_1,
+            deltas::DELTA_BISHOP_2,
+            deltas::DELTA_BISHOP_3,
+            deltas::DELTA_BISHOP_4
         ];
 
         false
@@ -892,7 +902,7 @@ impl Game {
                             result.push_str(&empty_count.to_string());
                             empty_count = 0;
                         }
-                        result.push(piece.as_char_ascii());
+                        result.push(piece.as_char());
                     }
                 }
             }
@@ -972,10 +982,12 @@ impl std::fmt::Display for Game {
         writeln!(f, "PGN: {}", self.get_pgn())?;
         writeln!(
             f,
-            "Eval: mg {}, eg {}, phase {}",
-            self.scores.score_mg, self.scores.score_eg, self.scores.game_phase
+            "Eval: mg {}, eg {}, phase {} | final eval {}",
+            self.scores.score_mg,
+            self.scores.score_eg,
+            self.scores.game_phase,
+            self.score()
         )?;
-        writeln!(f, "Gamephase: {}", self.scores.game_phase)?;
 
         writeln!(f)?;
 

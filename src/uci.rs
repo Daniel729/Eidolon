@@ -1,13 +1,13 @@
 use crate::{
     chess::{move_struct::Move, Game, Player},
-    constants::TT_CAPACITY,
-    search::{get_best_move_until_stop, TranspositionTable},
+    constants::{TT_CAPACITY, TT_REAL_CAPACITY},
+    performance_test,
+    search::{get_best_move_until_stop, HistoryData, TranspositionTable},
 };
 use anyhow::{bail, Context};
 use arrayvec::ArrayVec;
 use nohash_hasher::BuildNoHashHasher;
 use std::{
-    collections::HashMap,
     io::stdin,
     str::SplitAsciiWhitespace,
     sync::{
@@ -21,11 +21,12 @@ use std::{
 struct Data {
     current_game: Option<Game>,
     cache: TranspositionTable,
+    history: HistoryData,
 }
 
 impl Data {
-    fn mut_refs(&mut self) -> (&mut Option<Game>, &mut TranspositionTable) {
-        (&mut self.current_game, &mut self.cache)
+    fn mut_refs(&mut self) -> (&mut Option<Game>, &mut TranspositionTable, &mut HistoryData) {
+        (&mut self.current_game, &mut self.cache, &mut self.history)
     }
 }
 
@@ -49,9 +50,15 @@ pub(crate) use send_uci;
 /// Specification of UCI standard source
 /// https://gist.github.com/DOBRO/2592c6dad754ba67e6dcaec8c90165bf
 pub fn uci_talk() -> anyhow::Result<()> {
+    let cache =
+        TranspositionTable::with_capacity_and_hasher(TT_CAPACITY, BuildNoHashHasher::default());
+
+    TT_REAL_CAPACITY.set(cache.capacity() / 2).unwrap();
+
     let data = Arc::new(Mutex::new(Data {
         current_game: None,
-        cache: HashMap::with_capacity_and_hasher(TT_CAPACITY, BuildNoHashHasher::default()),
+        cache,
+        history: HistoryData::default(),
     }));
 
     let mut search_thread: Option<JoinHandle<()>> = None;
@@ -64,7 +71,6 @@ pub fn uci_talk() -> anyhow::Result<()> {
         log::info!("[INPUT] {}", line);
 
         let mut terms = line.split_ascii_whitespace();
-
         while let Some(term) = terms.next() {
             match term {
                 "uci" => {
@@ -183,9 +189,10 @@ fn command_go(
     let mut btime: Option<u64> = None;
     let mut winc: Option<u64> = None;
     let mut binc: Option<u64> = None;
-    let mut depth: Option<u8> = None;
+    let mut depth: Option<u16> = None;
     let mut move_time: Option<u64> = None;
     let mut moves_to_go: Option<u64> = None;
+    let mut perft: Option<u16> = None;
     let mut infinite = false;
 
     while let Some(term) = terms.next() {
@@ -197,37 +204,74 @@ fn command_go(
             "depth" => depth = terms.next().and_then(|s| s.parse().ok()),
             "movetime" => move_time = terms.next().and_then(|s| s.parse().ok()),
             "movestogo" => moves_to_go = terms.next().and_then(|s| s.parse().ok()),
+            "perft" => perft = terms.next().and_then(|s| s.parse().ok()),
             "infinite" => infinite = true,
             _ => continue,
         }
     }
 
-    const FRACTION_OF_TOTAL_TIME: f64 = 0.02;
-    const LATENCY_MS_COMPENSATE: u64 = 150;
+    if let Some(depth) = perft {
+        let mut game = game.clone();
+
+        return Ok(thread::spawn(move || {
+            // Generate perft test result
+            let mut moves = ArrayVec::new();
+            game.get_moves_main(&mut moves);
+
+            moves.sort_by_cached_key(|_move| _move.uci_notation());
+
+            let mut sum = 0;
+
+            let now = std::time::Instant::now();
+
+            for _move in moves {
+                game.push(_move);
+                let count = performance_test::perft(&mut game, depth - 1);
+                game.pop(_move);
+                sum += count;
+                println!("{}: {}", _move.uci_notation(), count);
+            }
+
+            println!();
+            println!("{}", sum);
+            println!();
+            println!("Time: {:?}", now.elapsed());
+            println!("Nodes: {}", game.generated_moves());
+            println!(
+                "NPS: {:.0}k",
+                game.generated_moves() as f64 / now.elapsed().as_secs_f64() / 1000.0
+            );
+        }));
+    }
+
+    const FRACTION_OF_TOTAL_TIME: f64 = 0.025;
 
     let mut time = None;
 
-    if wtime.is_some() && btime.is_some() && winc.is_some() && binc.is_some() {
+    if wtime.is_some() && btime.is_some() {
         let wtime = wtime.unwrap();
         let btime = btime.unwrap();
-        let winc = winc.unwrap();
-        let binc = binc.unwrap();
+        let winc = winc.unwrap_or(0);
+        let binc = binc.unwrap_or(0);
 
-        let (fraction, latency) = if let Some(moves_to_go) = moves_to_go {
-            (1.0 / moves_to_go as f64, 0)
+        let fraction = if let Some(moves_to_go) = moves_to_go {
+            1.0 / moves_to_go as f64
         } else {
-            (FRACTION_OF_TOTAL_TIME, LATENCY_MS_COMPENSATE)
+            FRACTION_OF_TOTAL_TIME
         };
 
-        // We decrease the time to make sure we never run out
-        let white_time = (wtime as f64 * fraction) as u64 + winc - latency;
-        let black_time = (btime as f64 * fraction) as u64 + binc - latency;
+        let white_time = ((wtime - winc) as f64 * fraction) as u64 + winc;
+        let black_time = ((btime - binc) as f64 * fraction) as u64 + binc;
 
         time = if game.player() == Player::White {
             Some(Duration::from_millis(white_time))
         } else {
             Some(Duration::from_millis(black_time))
         };
+    }
+
+    if time.is_none() || infinite {
+        time = Some(Duration::from_secs(u64::MAX));
     }
 
     if moves_to_go.is_some() && wtime.is_some() && btime.is_some() {
@@ -248,44 +292,29 @@ fn command_go(
         time = Some(Duration::from_millis(move_time));
     }
 
-    if let Some(time) = time {
-        if !infinite {
-            // Cut 5 ms from the time because sleep always takes more than given
-            let time = time.saturating_sub(Duration::from_millis(5));
-
-            send_uci!("info time {:?}", time.as_millis());
-
-            // This thread might stop a future search if the current one stops by itself
-            // Thus when a new search is started, a new atomic bool is created
-            thread::spawn({
-                let search_is_running = search_is_running.clone();
-                move || {
-                    thread::sleep(time);
-                    search_is_running.store(false, Relaxed);
-                }
-            });
-        }
-    }
-
     let thread = thread::spawn({
         search_is_running.store(true, Relaxed);
         let data_mutex = data_mutex.clone();
         let search_is_running = search_is_running.clone();
         move || {
             let mut data = data_mutex.lock().unwrap();
-            let (current_game, cache) = data.mut_refs();
+            let (current_game, cache, history) = data.mut_refs();
             let best_move = get_best_move_until_stop(
                 current_game.as_mut().unwrap(),
                 cache,
-                &search_is_running,
+                history,
+                time.unwrap(),
+                Some(&search_is_running),
                 depth,
             );
 
-            if let Some(best_move) = best_move {
-                send_uci!("bestmove {}", best_move.uci_notation());
-            } else {
-                send_uci!("bestmove none");
-            }
+            send_uci!(
+                "bestmove {}",
+                best_move
+                    .as_ref()
+                    .map(Move::uci_notation)
+                    .unwrap_or_else(|| "none".to_string()),
+            );
 
             search_is_running.store(false, Relaxed);
             *current_game = None;
@@ -347,7 +376,7 @@ fn command_position(data: &mut Data, terms: &mut SplitAsciiWhitespace<'_>) -> an
                 };
 
                 let mut moves = ArrayVec::new();
-                game.get_moves(&mut moves, true);
+                game.get_moves_main(&mut moves);
                 if moves.iter().any(|&allowed_move| _move == allowed_move) {
                     game.push_history(_move);
                     if game.len() >= 400 {

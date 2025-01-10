@@ -41,19 +41,50 @@ impl Move {
         }
     }
 
-    // Return the moves index inside history, if it is a quiet move
-    pub fn index_history(&self) -> Option<usize> {
+    // Return the moves index inside [piece][tp] tables
+    pub fn index_history(&self) -> usize {
         match self {
-            Move::Normal {
-                piece,
+            Move::Normal { piece, end, .. } => piece.as_index() * 64 + end.as_index(),
+            Move::CastlingShort { owner } => {
+                let piece = Piece::new(PieceType::King, *owner);
+
+                let end = match owner {
+                    Player::White => Position::new(0, 6).unwrap(),
+                    Player::Black => Position::new(7, 6).unwrap(),
+                };
+
+                piece.as_index() * 64 + end.as_index()
+            }
+            Move::CastlingLong { owner } => {
+                let piece = Piece::new(PieceType::King, *owner);
+
+                let end = match owner {
+                    Player::White => Position::new(0, 2).unwrap(),
+                    Player::Black => Position::new(7, 2).unwrap(),
+                };
+
+                piece.as_index() * 64 + end.as_index()
+            }
+            Move::EnPassant { owner, end_col, .. } => {
+                let piece = Piece::new(PieceType::Pawn, *owner);
+
+                let end = match owner {
+                    Player::White => Position::new(5, *end_col).unwrap(),
+                    Player::Black => Position::new(2, *end_col).unwrap(),
+                };
+
+                piece.as_index() * 64 + end.as_index()
+            }
+            Move::Promotion {
+                owner,
+                new_piece,
                 end,
-                captured_piece,
                 ..
-            } => match captured_piece {
-                Some(_) => None,
-                None => Some(piece.as_index() * 64 + end.as_usize()),
-            },
-            _ => None,
+            } => {
+                let piece = Piece::new(*new_piece, *owner);
+
+                piece.as_index() * 64 + end.as_index()
+            }
         }
     }
 

@@ -1,16 +1,16 @@
+// Source: https://www.talkchess.com/forum3/viewtopic.php?p=772515#p772515
+
 use super::Score;
 
-pub const GAMEPHASE_INC: [u8; 12] = [4, 2, 1, 1, 0, 0, 4, 2, 1, 1, 0, 0];
-pub const MG_TABLE: [[Score; 64]; 12] = init_table_mg();
-pub const EG_TABLE: [[Score; 64]; 12] = init_table_eg();
+pub const GAMEPHASE_INC: [u8; 12] = [0, 1, 1, 2, 4, 0, 0, 1, 1, 2, 4, 0];
 
-const fn init_table_mg() -> [[Score; 64]; 12] {
+pub const MG_TABLE: [[Score; 64]; 12] = {
     let mg_pesto_table: [&[Score; 64]; 6] = [
-        &MG_QUEEN_TABLE,
-        &MG_ROOK_TABLE,
-        &MG_BISHOP_TABLE,
-        &MG_KNIGHT_TABLE,
         &MG_PAWN_TABLE,
+        &MG_KNIGHT_TABLE,
+        &MG_BISHOP_TABLE,
+        &MG_ROOK_TABLE,
+        &MG_QUEEN_TABLE,
         &MG_KING_TABLE,
     ];
 
@@ -31,15 +31,15 @@ const fn init_table_mg() -> [[Score; 64]; 12] {
     }
 
     mg_table
-}
+};
 
-const fn init_table_eg() -> [[Score; 64]; 12] {
+pub const EG_TABLE: [[Score; 64]; 12] = {
     let eg_pesto_table: [&[Score; 64]; 6] = [
-        &EG_QUEEN_TABLE,
-        &EG_ROOK_TABLE,
-        &EG_BISHOP_TABLE,
-        &EG_KNIGHT_TABLE,
         &EG_PAWN_TABLE,
+        &EG_KNIGHT_TABLE,
+        &EG_BISHOP_TABLE,
+        &EG_ROOK_TABLE,
+        &EG_QUEEN_TABLE,
         &EG_KING_TABLE,
     ];
 
@@ -60,10 +60,10 @@ const fn init_table_eg() -> [[Score; 64]; 12] {
     }
 
     eg_table
-}
+};
 
-const MG_VALUE: [Score; 6] = [1025, 477, 365, 337, 82, 5000];
-const EG_VALUE: [Score; 6] = [936, 512, 297, 281, 94, 5000];
+const MG_VALUE: [Score; 6] = [82, 337, 365, 477, 1025, 5000];
+const EG_VALUE: [Score; 6] = [94, 281, 297, 512, 936, 5000];
 
 #[rustfmt::skip]
 const MG_PAWN_TABLE: [Score; 64] = [

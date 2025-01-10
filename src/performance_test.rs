@@ -4,9 +4,9 @@ use arrayvec::ArrayVec;
 // Documentation and source of correct values for perft: https://www.chessprogramming.org/Perft_Results
 
 /// Performance Test
-pub fn perft(game: &mut Game, depth: u8) -> usize {
+pub fn perft(game: &mut Game, depth: u16) -> usize {
     let mut moves = ArrayVec::new();
-    game.get_moves(&mut moves, true);
+    game.get_moves_main(&mut moves);
 
     let mut count = 0;
     if depth == 0 {
