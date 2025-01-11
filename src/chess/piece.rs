@@ -1,8 +1,4 @@
-use super::position::Position;
-use super::scores;
-use super::zobrist;
 use super::Player;
-use super::Score;
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum PieceType {
@@ -40,14 +36,6 @@ impl PieceType {
 }
 
 impl Piece {
-    pub fn score(self, pos: Position) -> (Score, Score, u8) {
-        (
-            scores::MG_TABLE[self.as_index()][pos.as_index()],
-            scores::EG_TABLE[self.as_index()][pos.as_index()],
-            scores::GAMEPHASE_INC[self.as_index()],
-        )
-    }
-
     pub fn material_value(self) -> u8 {
         self.piece_type.material_value()
     }
@@ -61,10 +49,6 @@ impl Piece {
         }
 
         index
-    }
-
-    pub fn hash(self, position: Position) -> u64 {
-        zobrist::PIECE[position.as_index()][self.as_index()]
     }
 
     pub fn as_str_pgn(self) -> &'static str {

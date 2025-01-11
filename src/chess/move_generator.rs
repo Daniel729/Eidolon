@@ -8,19 +8,26 @@ pub fn get_moves(mut push: impl FnMut(Move), game: &Game, pos: Position, piece: 
             for delta in $deltas {
                 if let Some(new_pos) = pos.add(delta) {
                     let place = game.get_position(new_pos);
-                    let _move = Move::Normal {
-                        piece,
-                        start: pos,
-                        end: new_pos,
-                        captured_piece: place,
-                    };
 
-                    if let Some(piece) = place  {
-                        if piece.owner != game.current_player {
+                    if let Some(capture) = place  {
+                        if capture.owner != game.current_player {
+                            let _move = Move::Capture {
+                                piece,
+                                start: pos,
+                                end: new_pos,
+                                capture,
+                            };
+
                             push(_move);
                         }
                         break;
                     }
+
+                    let _move = Move::Quiet {
+                        piece,
+                        start: pos,
+                        end: new_pos,
+                    };
 
                     push(_move);
                 } else {
@@ -98,11 +105,10 @@ fn get_pawn_moves(mut push: impl FnMut(Move), game: &Game, pos: Position, piece:
         && game.get_position(advanced_pos).is_none()
         && game.get_position(double_advanced_pos.unwrap()).is_none()
     {
-        push(Move::Normal {
+        push(Move::Quiet {
             piece,
             start: pos,
             end: double_advanced_pos.unwrap(),
-            captured_piece: None,
         });
     }
 
@@ -129,11 +135,10 @@ fn get_pawn_moves(mut push: impl FnMut(Move), game: &Game, pos: Position, piece:
                 push(_move);
             }
         } else {
-            let _move = Move::Normal {
+            let _move = Move::Quiet {
                 piece,
                 start: pos,
                 end: advanced_pos,
-                captured_piece: None,
             };
             push(_move);
         };
@@ -160,12 +165,21 @@ fn get_pawn_moves(mut push: impl FnMut(Move), game: &Game, pos: Position, piece:
                         push(_move);
                     }
                 } else {
-                    let _move = Move::Normal {
-                        piece,
-                        start: pos,
-                        end: new_pos,
-                        captured_piece: place,
+                    let _move = if let Some(capture) = place {
+                        Move::Capture {
+                            piece,
+                            start: pos,
+                            end: new_pos,
+                            capture,
+                        }
+                    } else {
+                        Move::Quiet {
+                            piece,
+                            start: pos,
+                            end: new_pos,
+                        }
                     };
+
                     push(_move);
                 };
             }
@@ -198,12 +212,23 @@ fn get_king_moves(mut push: impl FnMut(Move), game: &Game, pos: Position, piece:
                 {
                     continue;
                 }
-                push(Move::Normal {
-                    piece,
-                    start: pos,
-                    end: new_pos,
-                    captured_piece: place,
-                });
+
+                let _move = if let Some(capture) = place {
+                    Move::Capture {
+                        piece,
+                        start: pos,
+                        end: new_pos,
+                        capture,
+                    }
+                } else {
+                    Move::Quiet {
+                        piece,
+                        start: pos,
+                        end: new_pos,
+                    }
+                };
+
+                push(_move);
             }
         }
     }
@@ -258,12 +283,22 @@ fn get_knight_moves(mut push: impl FnMut(Move), game: &Game, pos: Position, piec
         if let Some(new_pos) = pos.add(delta) {
             let place = game.get_position(new_pos);
             if !place.is_some_and(|place_piece| place_piece.owner == game.current_player) {
-                push(Move::Normal {
-                    piece,
-                    start: pos,
-                    end: new_pos,
-                    captured_piece: place,
-                });
+                let _move = if let Some(capture) = place {
+                    Move::Capture {
+                        piece,
+                        start: pos,
+                        end: new_pos,
+                        capture,
+                    }
+                } else {
+                    Move::Quiet {
+                        piece,
+                        start: pos,
+                        end: new_pos,
+                    }
+                };
+
+                push(_move);
             }
         }
     }

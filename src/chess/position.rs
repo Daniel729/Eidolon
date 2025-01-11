@@ -65,4 +65,10 @@ impl Position {
     pub const fn as_index(self) -> usize {
         (self.row() * 8 + self.col()) as usize
     }
+
+    pub const fn from_bitboard(bitboard: u64) -> Self {
+        let index = bitboard.trailing_zeros() as i8;
+
+        Self(index as i8 / 8, index as i8 % 8)
+    }
 }

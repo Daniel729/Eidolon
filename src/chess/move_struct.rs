@@ -5,11 +5,16 @@ use std::str::FromStr;
 
 #[derive(PartialEq, Eq, Clone, Copy)]
 pub enum Move {
-    Normal {
+    Quiet {
         piece: Piece,
         start: Position,
         end: Position,
-        captured_piece: Option<Piece>,
+    },
+    Capture {
+        piece: Piece,
+        capture: Piece,
+        start: Position,
+        end: Position,
     },
     Promotion {
         owner: Player,
@@ -33,18 +38,17 @@ pub enum Move {
 
 impl Move {
     pub fn is_tactical_move(&self) -> bool {
-        match self {
-            Self::Normal { captured_piece, .. } => captured_piece.is_some(),
-            Self::Promotion { .. } => true,
-            Self::EnPassant { .. } => true,
-            _ => false,
-        }
+        matches!(
+            self,
+            Self::Capture { .. } | Self::Promotion { .. } | Self::EnPassant { .. }
+        )
     }
 
     // Return the moves index inside [piece][tp] tables
     pub fn index_history(&self) -> usize {
         match self {
-            Move::Normal { piece, end, .. } => piece.as_index() * 64 + end.as_index(),
+            Move::Quiet { piece, end, .. } => piece.as_index() * 64 + end.as_index(),
+            Move::Capture { piece, end, .. } => piece.as_index() * 64 + end.as_index(),
             Move::CastlingShort { owner } => {
                 let piece = Piece::new(PieceType::King, *owner);
 
@@ -91,7 +95,13 @@ impl Move {
     pub fn uci_notation(&self) -> String {
         let mut s = String::new();
         match self {
-            Self::Normal { start, end, .. } => {
+            Self::Quiet { start, end, .. } => {
+                s.push((start.col() as u8 + b'a') as char);
+                s.push((start.row() as u8 + b'1') as char);
+                s.push((end.col() as u8 + b'a') as char);
+                s.push((end.row() as u8 + b'1') as char);
+            }
+            Self::Capture { start, end, .. } => {
                 s.push((start.col() as u8 + b'a') as char);
                 s.push((start.row() as u8 + b'1') as char);
                 s.push((end.col() as u8 + b'a') as char);
@@ -155,18 +165,21 @@ impl Move {
 
     pub fn pgn_notation(&self) -> String {
         match self {
-            Self::Normal {
-                piece,
-                start,
-                end,
-                captured_piece,
+            Self::Quiet { piece, start, end } => {
+                let mut s = String::new();
+                s.push_str(piece.as_str_pgn());
+                s.push(((start.col()) as u8 + b'a') as char);
+                s.push(((end.col()) as u8 + b'a') as char);
+                s.push_str((end.row() + 1).to_string().as_str());
+                s
+            }
+            Self::Capture {
+                piece, start, end, ..
             } => {
                 let mut s = String::new();
                 s.push_str(piece.as_str_pgn());
                 s.push(((start.col()) as u8 + b'a') as char);
-                if captured_piece.is_some() {
-                    s.push('x');
-                }
+                s.push('x');
                 s.push(((end.col()) as u8 + b'a') as char);
                 s.push_str((end.row() + 1).to_string().as_str());
                 s
@@ -273,12 +286,16 @@ impl Move {
                         end_col: end.col(),
                     })
                 } else {
-                    Some(Self::Normal {
-                        piece,
-                        start,
-                        end,
-                        captured_piece: game.get_position(end),
-                    })
+                    if let Some(capture) = game.get_position(end) {
+                        Some(Self::Capture {
+                            piece,
+                            capture,
+                            start,
+                            end,
+                        })
+                    } else {
+                        Some(Self::Quiet { piece, start, end })
+                    }
                 };
             }
 
@@ -290,11 +307,21 @@ impl Move {
 impl std::fmt::Debug for Move {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Self::Normal {
+            Self::Quiet { piece, start, end } => write!(
+                f,
+                "{:?} {:?} from {} {} to {} {}",
+                piece.owner,
+                piece.piece_type,
+                start.row(),
+                start.col(),
+                end.row(),
+                end.col(),
+            ),
+            Self::Capture {
                 piece,
                 start,
                 end,
-                captured_piece,
+                capture,
             } => write!(
                 f,
                 "{:?} {:?} from {} {} to {} {}, captured {:?} ",
@@ -304,7 +331,7 @@ impl std::fmt::Debug for Move {
                 start.col(),
                 end.row(),
                 end.col(),
-                captured_piece.map(|piece| format!("{:?} {:?}", piece.owner, piece.piece_type))
+                format!("{:?} {:?}", capture.owner, capture.piece_type)
             ),
             Self::CastlingLong { owner } => write!(f, "castling long {:?} ", *owner),
             Self::CastlingShort { owner } => write!(f, "castling short {:?} ", *owner),

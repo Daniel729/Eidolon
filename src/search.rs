@@ -627,14 +627,9 @@ fn quiescence_search(game: &mut Game, mut alpha: Score, beta: Score) -> Score {
     game.get_moves_quiescence(&mut moves);
 
     moves.sort_by_key(|&_move| match _move {
-        Move::Normal {
-            piece,
-            captured_piece: capture,
-            ..
-        } => (
-            Reverse(capture.unwrap().material_value()),
-            piece.material_value(),
-        ),
+        Move::Capture { piece, capture, .. } => {
+            (Reverse(capture.material_value()), piece.material_value())
+        }
         Move::Promotion { .. } => (Reverse(u8::MAX), 0),
         Move::EnPassant { .. } => (Reverse(1), 0),
         _ => unreachable!(),
@@ -685,11 +680,9 @@ fn move_score(
     match _move {
         Move::Promotion { new_piece, .. } => PVS as u32 + 9 - new_piece.material_value() as u32 + 2,
         Move::EnPassant { .. } => 900,
-        Move::Normal {
-            captured_piece: Some(captured_piece),
-            piece,
-            ..
-        } => 1000 - (captured_piece.material_value() as u32) * 10 + piece.material_value() as u32,
+        Move::Capture { capture, piece, .. } => {
+            1000 - (capture.material_value() as u32) * 10 + piece.material_value() as u32
+        }
         _ => {
             let index = _move.index_history();
             let history_score = history.history[index] / history.seen_history[index].max(1);
