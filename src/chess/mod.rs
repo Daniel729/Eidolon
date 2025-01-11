@@ -52,7 +52,6 @@ pub struct Game {
     hash: u64,
     board: [Option<Piece>; 64],
     bitboard: BitBoards,
-    king_positions: [Position; 2],
     state: ArrayVec<GameState, 512>,
     generated_moves: u64,
 }
@@ -100,7 +99,6 @@ impl Game {
             },
             move_stack: ArrayVec::new(),
             hashes: HashMap::with_hasher(BuildHasherDefault::default()),
-            king_positions: [Position::new_assert(0, 0), Position::new_assert(0, 0)],
             hash: 0,
             state: ArrayVec::new(),
             generated_moves: 0,
@@ -129,10 +127,6 @@ impl Game {
 
                     let position = Position::new_assert(row, col);
                     let piece = Piece::from_char_ascii(piece).with_context(|| "Invalid piece")?;
-
-                    if piece.piece_type == PieceType::King {
-                        game.set_king_position(piece.owner, position);
-                    }
 
                     game.set_position(position, None, Some(piece));
 
@@ -251,11 +245,8 @@ impl Game {
     }
 
     pub fn get_king_position(&self, player: Player) -> Position {
-        self.king_positions[player.as_index()]
-    }
-
-    pub fn set_king_position(&mut self, player: Player, position: Position) {
-        self.king_positions[player.as_index()] = position;
+        let bitboard = self.bitboard.pieces[Piece::new(PieceType::King, player).as_index()];
+        Position::from_bitboard(bitboard)
     }
 
     pub fn times_seen_position(&self) -> u8 {
@@ -377,7 +368,6 @@ impl Game {
                 self.set_position(end, None, Some(piece));
 
                 if piece.piece_type == PieceType::King {
-                    self.set_king_position(self.current_player, end);
                     match self.current_player {
                         Player::White => {
                             state.set_white_king_castling_false();
@@ -433,7 +423,6 @@ impl Game {
                 self.set_position(end, Some(capture), Some(piece));
 
                 if piece.piece_type == PieceType::King {
-                    self.set_king_position(self.current_player, end);
                     match self.current_player {
                         Player::White => {
                             state.set_white_king_castling_false();
@@ -540,8 +529,6 @@ impl Game {
                 self.set_position(new_rook, None, Some(Piece::new(PieceType::Rook, owner)));
                 self.set_position(new_king, None, Some(Piece::new(PieceType::King, owner)));
 
-                self.set_king_position(self.current_player, new_king);
-
                 match self.current_player {
                     Player::White => {
                         state.set_white_king_castling_false();
@@ -569,8 +556,6 @@ impl Game {
                 self.set_position(old_king, Some(Piece::new(PieceType::King, owner)), None);
                 self.set_position(new_rook, None, Some(Piece::new(PieceType::Rook, owner)));
                 self.set_position(new_king, None, Some(Piece::new(PieceType::King, owner)));
-
-                self.set_king_position(self.current_player, new_king);
 
                 match self.current_player {
                     Player::White => {
@@ -605,10 +590,6 @@ impl Game {
             Move::Quiet { piece, start, end } => {
                 self.set_position(start, None, Some(piece));
                 self.set_position(end, Some(piece), None);
-
-                if piece.piece_type == PieceType::King {
-                    self.set_king_position(self.current_player, start);
-                }
             }
             Move::Capture {
                 piece,
@@ -618,10 +599,6 @@ impl Game {
             } => {
                 self.set_position(start, None, Some(piece));
                 self.set_position(end, Some(piece), Some(capture));
-
-                if piece.piece_type == PieceType::King {
-                    self.set_king_position(self.current_player, start);
-                }
             }
             Move::Promotion {
                 owner,
@@ -675,8 +652,6 @@ impl Game {
                 self.set_position(new_king, Some(Piece::new(PieceType::King, owner)), None);
                 self.set_position(old_rook, None, Some(Piece::new(PieceType::Rook, owner)));
                 self.set_position(old_king, None, Some(Piece::new(PieceType::King, owner)));
-
-                self.set_king_position(owner, old_king);
             }
             Move::CastlingShort { owner } => {
                 let row = match owner {
@@ -694,15 +669,12 @@ impl Game {
                 self.set_position(new_king, Some(Piece::new(PieceType::King, owner)), None);
                 self.set_position(old_rook, None, Some(Piece::new(PieceType::Rook, owner)));
                 self.set_position(old_king, None, Some(Piece::new(PieceType::King, owner)));
-
-                self.set_king_position(owner, old_king);
             }
         };
     }
 
     pub fn king_exists(&self, player: Player) -> bool {
-        self.get_position(self.get_king_position(player))
-            .is_some_and(|piece| piece.piece_type == PieceType::King)
+        self.bitboard.pieces[Piece::new(PieceType::King, player).as_index()] != 0
     }
 
     /// `moves` must be empty in order to be filled with moves
