@@ -1,7 +1,7 @@
 // Randomly generated constant numbers used for zobrist hashing
 pub const BLACK_TO_MOVE: u64 = get_random_nums::<1>(0)[0];
 
-pub const EMPTY_PLACE: u64 = get_random_nums::<1>(1)[0];
+pub const _EMPTY_PLACE: u64 = get_random_nums::<1>(1)[0];
 
 pub const STATE: [u64; 256] = get_random_nums::<256>(2);
 
@@ -63,7 +63,7 @@ mod tests {
 
         assert!(set.insert(BLACK_TO_MOVE));
 
-        assert!(set.insert(EMPTY_PLACE));
+        assert!(set.insert(_EMPTY_PLACE));
 
         for &num in &STATE {
             assert!(set.insert(num));

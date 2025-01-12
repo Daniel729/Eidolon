@@ -1,4 +1,4 @@
-use super::{move_struct::Move, piece::Piece, position::Position, Game, Player};
+use super::{bitboard, move_struct::Move, piece::Piece, position::Position, Game, Player};
 use crate::chess::{deltas::*, piece::PieceType};
 use std::cell::OnceCell;
 
@@ -67,7 +67,6 @@ pub fn get_moves(mut push: impl FnMut(Move), game: &Game, pos: Position, piece: 
         }
     }
 }
-
 fn get_pawn_moves(mut push: impl FnMut(Move), game: &Game, pos: Position, piece: Piece) {
     let first_row = match piece.owner {
         Player::White => 1,
@@ -112,11 +111,6 @@ fn get_pawn_moves(mut push: impl FnMut(Move), game: &Game, pos: Position, piece:
         });
     }
 
-    let side_deltas = match piece.owner {
-        Player::White => [(1, 1), (1, -1)],
-        Player::Black => [(-1, 1), (-1, -1)],
-    };
-
     if game.get_position(advanced_pos).is_none() {
         if last_row == advanced_pos.row() {
             for new_piece in [
@@ -144,46 +138,48 @@ fn get_pawn_moves(mut push: impl FnMut(Move), game: &Game, pos: Position, piece:
         };
     }
 
-    for delta in side_deltas {
-        if let Some(new_pos) = pos.add(delta) {
-            let place = game.get_position(new_pos);
-            if place.is_some_and(|place_piece| place_piece.owner != piece.owner) {
-                if last_row == new_pos.row() {
-                    for new_piece in [
-                        PieceType::Queen,
-                        PieceType::Rook,
-                        PieceType::Bishop,
-                        PieceType::Knight,
-                    ] {
-                        let _move = Move::Promotion {
-                            owner: game.current_player,
-                            start: pos,
-                            end: new_pos,
-                            captured_piece: place,
-                            new_piece,
-                        };
-                        push(_move);
-                    }
-                } else {
-                    let _move = if let Some(capture) = place {
-                        Move::Capture {
-                            piece,
-                            start: pos,
-                            end: new_pos,
-                            capture,
-                        }
-                    } else {
-                        Move::Quiet {
-                            piece,
-                            start: pos,
-                            end: new_pos,
-                        }
-                    };
+    let attack = match piece.owner {
+        Player::White => bitboard::PAWN_ATTACK_WHITE[pos.as_index()],
+        Player::Black => bitboard::PAWN_ATTACK_BLACK[pos.as_index()],
+    };
 
-                    push(_move);
+    let opp_pieces = game.bitboard_opp();
+
+    let mut attacked = opp_pieces & attack;
+
+    while attacked != 0 {
+        let new_pos = Position::from_bitboard(attacked);
+        let capture = game.get_position(new_pos).unwrap();
+
+        if last_row == new_pos.row() {
+            for new_piece in [
+                PieceType::Queen,
+                PieceType::Rook,
+                PieceType::Bishop,
+                PieceType::Knight,
+            ] {
+                let _move = Move::Promotion {
+                    owner: piece.owner,
+                    start: pos,
+                    end: new_pos,
+                    captured_piece: Some(capture),
+                    new_piece,
                 };
+
+                push(_move);
             }
-        }
+        } else {
+            let _move = Move::Capture {
+                piece,
+                start: pos,
+                end: new_pos,
+                capture,
+            };
+
+            push(_move);
+        };
+
+        attacked &= attacked - 1;
     }
 
     let valid_en_passant = game.state().en_passant();
@@ -202,48 +198,62 @@ fn get_pawn_moves(mut push: impl FnMut(Move), game: &Game, pos: Position, piece:
 
 fn get_king_moves(mut push: impl FnMut(Move), game: &Game, pos: Position, piece: Piece) {
     let other_king_pos = game.get_king_position(game.current_player.the_other());
-    for delta in DELTA_KING {
-        if let Some(new_pos) = pos.add(delta) {
-            let place = game.get_position(new_pos);
-            if !place.is_some_and(|place_piece| place_piece.owner == game.current_player) {
-                // Kings can't move into each other
-                if i8::abs(new_pos.row() - other_king_pos.row()) <= 1
-                    && i8::abs(new_pos.col() - other_king_pos.col()) <= 1
-                {
-                    continue;
-                }
 
-                let _move = if let Some(capture) = place {
-                    Move::Capture {
-                        piece,
-                        start: pos,
-                        end: new_pos,
-                        capture,
-                    }
-                } else {
-                    Move::Quiet {
-                        piece,
-                        start: pos,
-                        end: new_pos,
-                    }
-                };
+    let all_pieces = game.bitboard_all();
+    let opp_pieces = game.bitboard_opp();
 
-                push(_move);
-            }
-        }
+    let attack = bitboard::KING_ATTACK[pos.as_index()];
+    let other_king_attack = bitboard::KING_ATTACK[other_king_pos.as_index()];
+
+    let mut attacked = (!all_pieces & attack) & !other_king_attack;
+
+    while attacked != 0 {
+        let new_pos = Position::from_bitboard(attacked);
+
+        let _move = Move::Quiet {
+            piece,
+            start: pos,
+            end: new_pos,
+        };
+
+        push(_move);
+
+        attacked &= attacked - 1;
     }
+
+    let mut attacked = (opp_pieces & attack) & !other_king_attack;
+
+    while attacked != 0 {
+        let new_pos = Position::from_bitboard(attacked);
+
+        let _move = Move::Capture {
+            piece,
+            start: pos,
+            end: new_pos,
+            capture: game.get_position(new_pos).unwrap(),
+        };
+
+        push(_move);
+
+        attacked &= attacked - 1;
+    }
+
     let state = game.state();
+
     let (king_side_castling, queen_side_castling) = match game.current_player {
         Player::White => (state.white_king_castling(), state.white_queen_castling()),
         Player::Black => (state.black_king_castling(), state.black_queen_castling()),
     };
+
     let row = match game.current_player {
         Player::White => 0,
         Player::Black => 7,
     };
+
     // We may need this value 0, 1, or 2 times so we lazy-initialize it.
     let is_king_targeted = OnceCell::new();
     let king = Position::new_assert(row, 4);
+
     if king_side_castling {
         let (pos1, pos2) = (Position::new_assert(row, 5), Position::new_assert(row, 6));
         if game.get_position(pos1).is_none()
@@ -279,27 +289,41 @@ fn get_king_moves(mut push: impl FnMut(Move), game: &Game, pos: Position, piece:
 }
 
 fn get_knight_moves(mut push: impl FnMut(Move), game: &Game, pos: Position, piece: Piece) {
-    for delta in DELTA_KNIGHT {
-        if let Some(new_pos) = pos.add(delta) {
-            let place = game.get_position(new_pos);
-            if !place.is_some_and(|place_piece| place_piece.owner == game.current_player) {
-                let _move = if let Some(capture) = place {
-                    Move::Capture {
-                        piece,
-                        start: pos,
-                        end: new_pos,
-                        capture,
-                    }
-                } else {
-                    Move::Quiet {
-                        piece,
-                        start: pos,
-                        end: new_pos,
-                    }
-                };
+    let all_pieces = game.bitboard_all();
+    let opp_pieces = game.bitboard_opp();
 
-                push(_move);
-            }
-        }
+    let attack = bitboard::KNIGHT_ATTACK[pos.as_index()];
+
+    let mut attacked = !all_pieces & attack;
+
+    while attacked != 0 {
+        let new_pos = Position::from_bitboard(attacked);
+
+        let _move = Move::Quiet {
+            piece,
+            start: pos,
+            end: new_pos,
+        };
+
+        push(_move);
+
+        attacked &= attacked - 1;
+    }
+
+    let mut attacked = opp_pieces & attack;
+
+    while attacked != 0 {
+        let new_pos = Position::from_bitboard(attacked);
+
+        let _move = Move::Capture {
+            piece,
+            start: pos,
+            end: new_pos,
+            capture: game.get_position(new_pos).unwrap(),
+        };
+
+        push(_move);
+
+        attacked &= attacked - 1;
     }
 }

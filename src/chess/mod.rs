@@ -1,6 +1,7 @@
 pub mod move_struct;
 pub mod zobrist;
 
+mod bitboard;
 mod deltas;
 mod gamestate;
 mod move_generator;
@@ -36,11 +37,11 @@ struct GameScores {
     on_rank: [[u8; 8]; 12],
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct BitBoards {
-    pieces: [u64; 12],
-    colors: [u64; 2],
-    all: u64,
+    pub pieces: [u64; 12],
+    pub colors: [u64; 2],
+    pub all: u64,
 }
 
 #[derive(Clone)]
@@ -216,6 +217,22 @@ impl Game {
         self.current_player
     }
 
+    pub fn bitboard_all(&self) -> u64 {
+        self.bitboard.all
+    }
+
+    pub fn bitboard_opp(&self) -> u64 {
+        self.bitboard.colors[self.current_player.the_other().as_index()]
+    }
+
+    pub fn bitboard_own(&self) -> u64 {
+        self.bitboard.colors[self.current_player.as_index()]
+    }
+
+    pub fn bitboard_piece(&self, piece: PieceType, player: Player) -> u64 {
+        self.bitboard.pieces[Piece::new(piece, player).as_index()]
+    }
+
     pub fn score(&self) -> Score {
         let mg_score = self.scores.score_mg;
         let eg_score = self.scores.score_eg;
@@ -245,8 +262,12 @@ impl Game {
     }
 
     pub fn get_king_position(&self, player: Player) -> Position {
-        let bitboard = self.bitboard.pieces[Piece::new(PieceType::King, player).as_index()];
+        let bitboard = self.bitboard_piece(PieceType::King, player);
         Position::from_bitboard(bitboard)
+    }
+
+    pub fn king_exists(&self, player: Player) -> bool {
+        self.bitboard_piece(PieceType::King, player) != 0
     }
 
     pub fn times_seen_position(&self) -> u8 {
@@ -292,9 +313,9 @@ impl Game {
             self.scores.on_rank[piece_index][row_index] -= 1;
             self.scores.on_file[piece_index][col_index] -= 1;
 
-            self.bitboard.pieces[piece_index] ^= 1 << position_index;
-            self.bitboard.colors[piece.owner.as_index()] ^= 1 << position_index;
-            self.bitboard.all ^= 1 << position_index;
+            self.bitboard.pieces[piece_index] &= !(1 << position_index);
+            self.bitboard.colors[piece.owner.as_index()] &= !(1 << position_index);
+            self.bitboard.all &= !(1 << position_index);
         }
 
         if let Some(piece) = new_place {
@@ -309,9 +330,9 @@ impl Game {
             self.scores.on_rank[piece_index][row_index] += 1;
             self.scores.on_file[piece_index][col_index] += 1;
 
-            self.bitboard.pieces[piece_index] ^= 1 << position_index;
-            self.bitboard.colors[piece.owner.as_index()] ^= 1 << position_index;
-            self.bitboard.all ^= 1 << position_index;
+            self.bitboard.pieces[piece_index] |= 1 << position_index;
+            self.bitboard.colors[piece.owner.as_index()] |= 1 << position_index;
+            self.bitboard.all |= 1 << position_index;
         }
 
         self.board[position_index] = new_place;
@@ -673,10 +694,6 @@ impl Game {
         };
     }
 
-    pub fn king_exists(&self, player: Player) -> bool {
-        self.bitboard.pieces[Piece::new(PieceType::King, player).as_index()] != 0
-    }
-
     /// `moves` must be empty in order to be filled with moves
     pub fn get_moves_main(&mut self, moves: &mut ArrayVec<Move, 256>) {
         assert!(moves.is_empty());
@@ -696,17 +713,15 @@ impl Game {
             }
         };
 
-        let mut all = self.bitboard.all;
+        let mut own_pieces = self.bitboard_own();
 
-        while all != 0 {
-            let position = Position::from_bitboard(all);
+        while own_pieces != 0 {
+            let position = Position::from_bitboard(own_pieces);
             let piece = self.get_position(position).unwrap();
 
-            if piece.owner == self.current_player {
-                get_moves(&mut push, self, position, piece);
-            }
+            get_moves(&mut push, self, position, piece);
 
-            all &= all - 1;
+            own_pieces &= own_pieces - 1;
         }
 
         // Remove moves which put the king in check (invalid moves)
@@ -774,17 +789,17 @@ impl Game {
             }
         };
 
-        let mut all = self.bitboard.all;
+        let mut own_pieces = self.bitboard_own();
 
-        while all != 0 {
-            let position = Position::from_bitboard(all);
+        while own_pieces != 0 {
+            let position = Position::from_bitboard(own_pieces);
             let piece = self.get_position(position).unwrap();
 
             if piece.owner == self.current_player {
                 get_moves(&mut push, self, position, piece);
             }
 
-            all &= all - 1;
+            own_pieces &= own_pieces - 1;
         }
     }
 
@@ -810,48 +825,24 @@ impl Game {
         }
 
         // Verify for knights
-        for delta in deltas::DELTA_KNIGHT {
-            if let Some(new_pos) = position.add(delta) {
-                if self.get_position(new_pos).is_some_and(|piece| {
-                    piece.owner != player && piece.piece_type == PieceType::Knight
-                }) {
-                    return true;
-                }
-            }
+        let opp_knight = self.bitboard_piece(PieceType::Knight, player.the_other());
+
+        if bitboard::KNIGHT_ATTACK[position.as_index()] & opp_knight != 0 {
+            return true;
         }
 
         // Verify for pawns
+        let opp_pawn = self.bitboard_piece(PieceType::Pawn, player.the_other());
+
         match player {
             Player::White => {
-                if let Some(new_pos) = position.add((1, 1)) {
-                    if self.get_position(new_pos).is_some_and(|piece| {
-                        piece.owner != player && piece.piece_type == PieceType::Pawn
-                    }) {
-                        return true;
-                    }
-                }
-                if let Some(new_pos) = position.add((1, -1)) {
-                    if self.get_position(new_pos).is_some_and(|piece| {
-                        piece.owner != player && piece.piece_type == PieceType::Pawn
-                    }) {
-                        return true;
-                    }
+                if bitboard::PAWN_ATTACK_WHITE[position.as_index()] & opp_pawn != 0 {
+                    return true;
                 }
             }
             Player::Black => {
-                if let Some(new_pos) = position.add((-1, 1)) {
-                    if self.get_position(new_pos).is_some_and(|piece| {
-                        piece.owner != player && piece.piece_type == PieceType::Pawn
-                    }) {
-                        return true;
-                    }
-                }
-                if let Some(new_pos) = position.add((-1, -1)) {
-                    if self.get_position(new_pos).is_some_and(|piece| {
-                        piece.owner != player && piece.piece_type == PieceType::Pawn
-                    }) {
-                        return true;
-                    }
+                if bitboard::PAWN_ATTACK_BLACK[position.as_index()] & opp_pawn != 0 {
+                    return true;
                 }
             }
         };
@@ -1012,7 +1003,6 @@ impl std::fmt::Display for Game {
         writeln!(f, "Hash: {:X}", self.hash)?;
         writeln!(f, "Fen: {}", self.fen())?;
         writeln!(f, "PGN: {}", self.get_pgn())?;
-        writeln!(f, "On file:\n{:?}", self.scores.on_file)?;
         writeln!(
             f,
             "Eval: mg {}, eg {}, phase {} | final eval {}",
