@@ -1,17 +1,25 @@
 [package]
-name = "rustybait"
+name = "eidolon"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.81.0"
+default-run = "eidolon"
 
 [dependencies]
 anyhow = "1.0"
 arrayvec = "0.7"
+fastrand = { version = "2.3.0", optional = true }
 log = { version = "0.4.22", default-features = false, optional = true }
 nohash-hasher = "0.2"
 simplelog = { version = "0.12.2", default-features = false, optional = true }
 
 [features]
 log = ["dep:log", "dep:simplelog"]
+magic = ["dep:fastrand"]
 
 [profile.release]
 debug = "full"
+
+[[bin]]
+name = "eidolon"
+path = "src/bin/main.rs"

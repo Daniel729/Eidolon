@@ -151,7 +151,7 @@ pub fn uci_talk() -> anyhow::Result<()> {
 }
 
 fn command_uci() {
-    send_uci!("id name rustybait");
+    send_uci!("id name Eidolon 0.1.0");
     send_uci!("id author Malanca Daniel");
     send_uci!("uciok");
 }

@@ -1,12 +1,5 @@
 use anyhow::Context;
-
-mod autoplay;
-mod chess;
-mod constants;
-mod epd;
-mod performance_test;
-mod search;
-mod uci;
+use eidolon::{autoplay, epd, uci};
 
 fn main() -> anyhow::Result<()> {
     #[cfg(feature = "log")]
@@ -17,7 +10,7 @@ fn main() -> anyhow::Result<()> {
             .create(true)
             .write(true)
             .append(true)
-            .open("/tmp/rustybait_uci.log")?,
+            .open("/tmp/eidolon_uci.log")?,
     )?;
 
     let mut args = std::env::args();
