@@ -33,8 +33,6 @@ struct GameScores {
     score_mg: Score,
     score_eg: Score,
     game_phase: u8,
-    on_file: [[u8; 8]; 12],
-    on_rank: [[u8; 8]; 12],
 }
 
 #[derive(Clone, Debug)]
@@ -88,8 +86,6 @@ impl Game {
                 score_mg: 0,
                 score_eg: 0,
                 game_phase: 0,
-                on_file: [[0; 8]; 12],
-                on_rank: [[0; 8]; 12],
             },
             current_player: Player::White,
             board: [None; 64],
@@ -291,6 +287,7 @@ impl Game {
         &self.move_stack
     }
 
+    #[inline(always)]
     fn set_position(
         &mut self,
         position: Position,
@@ -298,11 +295,10 @@ impl Game {
         new_place: Option<Piece>,
     ) {
         let position_index = position.as_index();
-        let row_index = position.row() as usize;
-        let col_index = position.col() as usize;
 
         if let Some(piece) = old_place {
             let piece_index = piece.as_index();
+            let owner_index = piece.owner.as_index();
 
             self.hash ^= zobrist::PIECE[position_index][piece_index];
 
@@ -310,16 +306,14 @@ impl Game {
             self.scores.score_eg -= scores::EG_TABLE[piece_index][position_index];
             self.scores.game_phase -= scores::GAMEPHASE_INC[piece_index];
 
-            self.scores.on_rank[piece_index][row_index] -= 1;
-            self.scores.on_file[piece_index][col_index] -= 1;
-
             self.bitboard.pieces[piece_index] &= !(1 << position_index);
-            self.bitboard.colors[piece.owner.as_index()] &= !(1 << position_index);
+            self.bitboard.colors[owner_index] &= !(1 << position_index);
             self.bitboard.all &= !(1 << position_index);
         }
 
         if let Some(piece) = new_place {
             let piece_index = piece.as_index();
+            let owner_index = piece.owner.as_index();
 
             self.hash ^= zobrist::PIECE[position_index][piece_index];
 
@@ -327,11 +321,8 @@ impl Game {
             self.scores.score_eg += scores::EG_TABLE[piece_index][position_index];
             self.scores.game_phase += scores::GAMEPHASE_INC[piece_index];
 
-            self.scores.on_rank[piece_index][row_index] += 1;
-            self.scores.on_file[piece_index][col_index] += 1;
-
             self.bitboard.pieces[piece_index] |= 1 << position_index;
-            self.bitboard.colors[piece.owner.as_index()] |= 1 << position_index;
+            self.bitboard.colors[owner_index] |= 1 << position_index;
             self.bitboard.all |= 1 << position_index;
         }
 
@@ -811,18 +802,7 @@ impl Game {
     /// since I already verify that moves don't put kings near each other and a king blocking
     /// a castling move is so unlikely I don't want to waste time on it.
     fn is_targeted(&self, position: Position, player: Player) -> bool {
-        // Verifiy for kings - seems unnecessary, so it's disabled
-        if false {
-            for delta in deltas::DELTA_KING {
-                if let Some(new_pos) = position.add(delta) {
-                    if self.get_position(new_pos).is_some_and(|piece| {
-                        piece.owner != player && piece.piece_type == PieceType::King
-                    }) {
-                        return true;
-                    }
-                }
-            }
-        }
+        // Verifiy for kings seems unnecessary
 
         // Verify for knights
         let opp_knight = self.bitboard_piece(PieceType::Knight, player.the_other());
