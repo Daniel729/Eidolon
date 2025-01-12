@@ -851,6 +851,7 @@ impl Game {
         macro_rules! search_enemies_loops {
             ( $piece_type1:expr, $piece_type2:expr, $( $x:expr ),* ) => {
                 $(
+
                 for delta in $x {
                     if let Some(new_pos) = position.add(delta) {
                         if let Some(piece) = self.get_position(new_pos)  {
@@ -868,25 +869,39 @@ impl Game {
             };
         }
 
-        // Verify lines for rooks/queens
-        search_enemies_loops![
-            PieceType::Rook,
-            PieceType::Queen,
-            deltas::DELTA_ROOK_1,
-            deltas::DELTA_ROOK_2,
-            deltas::DELTA_ROOK_3,
-            deltas::DELTA_ROOK_4
-        ];
+        let opp_pieces = self.bitboard_piece(PieceType::Rook, player.the_other())
+            | self.bitboard_piece(PieceType::Queen, player.the_other());
 
-        // Verify diagonals for bishops/queens
-        search_enemies_loops![
-            PieceType::Bishop,
-            PieceType::Queen,
-            deltas::DELTA_BISHOP_1,
-            deltas::DELTA_BISHOP_2,
-            deltas::DELTA_BISHOP_3,
-            deltas::DELTA_BISHOP_4
-        ];
+        let attack = bitboard::ROOK_ATTACK[position.as_index()];
+
+        if attack & opp_pieces != 0 {
+            // Verify lines for rooks/queens
+            search_enemies_loops![
+                PieceType::Rook,
+                PieceType::Queen,
+                deltas::DELTA_ROOK_1,
+                deltas::DELTA_ROOK_2,
+                deltas::DELTA_ROOK_3,
+                deltas::DELTA_ROOK_4
+            ];
+        }
+
+        let opp_pieces = self.bitboard_piece(PieceType::Bishop, player.the_other())
+            | self.bitboard_piece(PieceType::Queen, player.the_other());
+
+        let attack = bitboard::BISHOP_ATTACK[position.as_index()];
+
+        if attack & opp_pieces != 0 {
+            // Verify diagonals for bishops/queens
+            search_enemies_loops![
+                PieceType::Bishop,
+                PieceType::Queen,
+                deltas::DELTA_BISHOP_1,
+                deltas::DELTA_BISHOP_2,
+                deltas::DELTA_BISHOP_3,
+                deltas::DELTA_BISHOP_4
+            ];
+        }
 
         false
     }

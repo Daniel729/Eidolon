@@ -145,7 +145,7 @@ macro_rules! add_delta {
     )*};
 }
 
-pub const _ROOK_ATTACK: [u64; 64] = {
+pub const ROOK_ATTACK: [u64; 64] = {
     let mut array = [0; 64];
 
     let mut row = 0;
@@ -173,7 +173,7 @@ pub const _ROOK_ATTACK: [u64; 64] = {
     array
 };
 
-pub const _BISHOP_ATTACK: [u64; 64] = {
+pub const BISHOP_ATTACK: [u64; 64] = {
     let mut array = [0; 64];
 
     let mut row = 0;
