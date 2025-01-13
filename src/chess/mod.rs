@@ -401,19 +401,23 @@ impl Game {
                     let mut enemy_pawns_exist = false;
 
                     if end.col() > 0 {
+                        let position = Position::new_assert(end.row(), end.col() - 1);
+                        let bitboard = 1 << position.as_index();
+
                         enemy_pawns_exist |= self
-                            .get_position(Position::new_assert(end.row(), end.col() - 1))
-                            .is_some_and(|p| {
-                                p.piece_type == PieceType::Pawn && p.owner != piece.owner
-                            });
+                            .bitboard_piece(PieceType::Pawn, piece.owner.the_other())
+                            & bitboard
+                            != 0;
                     }
 
                     if end.col() < 7 {
+                        let position = Position::new_assert(end.row(), end.col() + 1);
+                        let bitboard = 1 << position.as_index();
+
                         enemy_pawns_exist |= self
-                            .get_position(Position::new_assert(end.row(), end.col() + 1))
-                            .is_some_and(|p| {
-                                p.piece_type == PieceType::Pawn && p.owner != piece.owner
-                            });
+                            .bitboard_piece(PieceType::Pawn, piece.owner.the_other())
+                            & bitboard
+                            != 0;
                     }
 
                     if enemy_pawns_exist {

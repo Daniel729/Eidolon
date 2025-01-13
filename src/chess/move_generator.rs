@@ -95,23 +95,22 @@ fn get_pawn_moves(mut push: impl FnMut(Move), game: &Game, pos: Position, piece:
 
     // The advanced position always exists
     let advanced_pos = pos.add(normal_delta).unwrap();
+    let advanced_bitboard = 1 << advanced_pos.as_index();
 
-    // The double-advanced position exists if pawn is on first row
-    let double_advanced_pos = pos.add(first_row_delta);
+    if pos.row() == first_row && game.bitboard_all() & advanced_bitboard == 0 {
+        let double_advanced_pos = pos.add(first_row_delta).unwrap();
+        let double_advanced_bitboard = 1 << double_advanced_pos.as_index();
 
-    // First moves for pawns always exist if available
-    if pos.row() == first_row
-        && game.get_position(advanced_pos).is_none()
-        && game.get_position(double_advanced_pos.unwrap()).is_none()
-    {
-        push(Move::Quiet {
-            piece,
-            start: pos,
-            end: double_advanced_pos.unwrap(),
-        });
+        if game.bitboard_all() & double_advanced_bitboard == 0 {
+            push(Move::Quiet {
+                piece,
+                start: pos,
+                end: double_advanced_pos,
+            });
+        }
     }
 
-    if game.get_position(advanced_pos).is_none() {
+    if game.bitboard_all() & advanced_bitboard == 0 {
         if last_row == advanced_pos.row() {
             for new_piece in [
                 PieceType::Queen,
