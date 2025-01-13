@@ -37,9 +37,8 @@ struct GameScores {
 
 #[derive(Clone, Debug)]
 pub struct BitBoards {
-    pub pieces: [u64; 12],
-    pub colors: [u64; 2],
-    pub all: u64,
+    pieces: [u64; 12],
+    colors: [u64; 2],
 }
 
 #[derive(Clone)]
@@ -92,7 +91,6 @@ impl Game {
             bitboard: BitBoards {
                 pieces: [0; 12],
                 colors: [0; 2],
-                all: 0,
             },
             move_stack: ArrayVec::new(),
             hashes: HashMap::with_hasher(BuildHasherDefault::default()),
@@ -214,7 +212,7 @@ impl Game {
     }
 
     pub fn bitboard_all(&self) -> u64 {
-        self.bitboard.all
+        self.bitboard.colors[0] | self.bitboard.colors[1]
     }
 
     pub fn bitboard_opp(&self) -> u64 {
@@ -308,7 +306,6 @@ impl Game {
 
             self.bitboard.pieces[piece_index] &= !(1 << position_index);
             self.bitboard.colors[owner_index] &= !(1 << position_index);
-            self.bitboard.all &= !(1 << position_index);
         }
 
         if let Some(piece) = new_place {
@@ -323,7 +320,6 @@ impl Game {
 
             self.bitboard.pieces[piece_index] |= 1 << position_index;
             self.bitboard.colors[owner_index] |= 1 << position_index;
-            self.bitboard.all |= 1 << position_index;
         }
 
         self.board[position_index] = new_place;
