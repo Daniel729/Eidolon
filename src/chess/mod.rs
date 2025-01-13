@@ -500,6 +500,8 @@ impl Game {
                 start_col,
                 end_col,
             } => {
+                assert!(start_col >= 0 && start_col <= 7 && end_col >= 0 && end_col <= 7);
+
                 let (old_pawn, new_pawn, taken_pawn) = match owner {
                     Player::White => (
                         Position::new_assert(4, start_col),
@@ -521,15 +523,13 @@ impl Game {
                 self.set_position(new_pawn, None, Some(Piece::new(PieceType::Pawn, owner)));
             }
             Move::CastlingLong { owner } => {
-                let row = match owner {
-                    Player::White => 0,
-                    Player::Black => 7,
-                };
+                let owner_index = owner.as_index();
+
                 let (old_king, new_king, old_rook, new_rook) = (
-                    Position::new_assert(row, 4),
-                    Position::new_assert(row, 2),
-                    Position::new_assert(row, 0),
-                    Position::new_assert(row, 3),
+                    Position::CASTLING_LONG_OLD_KING[owner_index],
+                    Position::CASTLING_LONG_NEW_KING[owner_index],
+                    Position::CASTLING_LONG_OLD_ROOK[owner_index],
+                    Position::CASTLING_LONG_NEW_ROOK[owner_index],
                 );
 
                 self.set_position(old_rook, Some(Piece::new(PieceType::Rook, owner)), None);
@@ -549,15 +549,13 @@ impl Game {
                 }
             }
             Move::CastlingShort { owner } => {
-                let row = match owner {
-                    Player::White => 0,
-                    Player::Black => 7,
-                };
+                let owner_index = owner.as_index();
+
                 let (old_king, new_king, old_rook, new_rook) = (
-                    Position::new_assert(row, 4),
-                    Position::new_assert(row, 6),
-                    Position::new_assert(row, 7),
-                    Position::new_assert(row, 5),
+                    Position::CASTLING_SHORT_OLD_KING[owner_index],
+                    Position::CASTLING_SHORT_NEW_KING[owner_index],
+                    Position::CASTLING_SHORT_OLD_ROOK[owner_index],
+                    Position::CASTLING_SHORT_NEW_ROOK[owner_index],
                 );
 
                 self.set_position(old_rook, Some(Piece::new(PieceType::Rook, owner)), None);
@@ -623,6 +621,8 @@ impl Game {
                 start_col,
                 end_col,
             } => {
+                assert!(start_col >= 0 && start_col <= 7 && end_col >= 0 && end_col <= 7);
+
                 let (old_pawn, new_pawn, taken_pawn) = match owner {
                     Player::White => (
                         Position::new_assert(4, start_col),
@@ -645,15 +645,13 @@ impl Game {
                 self.set_position(old_pawn, None, Some(Piece::new(PieceType::Pawn, owner)));
             }
             Move::CastlingLong { owner } => {
-                let row = match owner {
-                    Player::White => 0,
-                    Player::Black => 7,
-                };
+                let owner_index = owner.as_index();
+
                 let (old_king, new_king, old_rook, new_rook) = (
-                    Position::new_assert(row, 4),
-                    Position::new_assert(row, 2),
-                    Position::new_assert(row, 0),
-                    Position::new_assert(row, 3),
+                    Position::CASTLING_LONG_OLD_KING[owner_index],
+                    Position::CASTLING_LONG_NEW_KING[owner_index],
+                    Position::CASTLING_LONG_OLD_ROOK[owner_index],
+                    Position::CASTLING_LONG_NEW_ROOK[owner_index],
                 );
 
                 self.set_position(new_rook, Some(Piece::new(PieceType::Rook, owner)), None);
@@ -662,15 +660,13 @@ impl Game {
                 self.set_position(old_king, None, Some(Piece::new(PieceType::King, owner)));
             }
             Move::CastlingShort { owner } => {
-                let row = match owner {
-                    Player::White => 0,
-                    Player::Black => 7,
-                };
+                let owner_index = owner.as_index();
+
                 let (old_king, new_king, old_rook, new_rook) = (
-                    Position::new_assert(row, 4),
-                    Position::new_assert(row, 6),
-                    Position::new_assert(row, 7),
-                    Position::new_assert(row, 5),
+                    Position::CASTLING_SHORT_OLD_KING[owner_index],
+                    Position::CASTLING_SHORT_NEW_KING[owner_index],
+                    Position::CASTLING_SHORT_OLD_ROOK[owner_index],
+                    Position::CASTLING_SHORT_NEW_ROOK[owner_index],
                 );
 
                 self.set_position(new_rook, Some(Piece::new(PieceType::Rook, owner)), None);
@@ -700,15 +696,25 @@ impl Game {
             }
         };
 
-        let mut own_pieces = self.bitboard_own();
+        for piece in PieceType::ALL {
+            let mut bitboard = self.bitboard_piece(piece, self.current_player);
 
-        while own_pieces != 0 {
-            let position = Position::from_bitboard(own_pieces);
-            let piece = self.get_position(position).unwrap();
+            while bitboard != 0 {
+                let position = Position::from_bitboard(bitboard);
 
-            get_moves(&mut push, self, position, piece);
+                debug_assert!(self
+                    .get_position(position)
+                    .is_some_and(|p| p.piece_type == piece && p.owner == self.current_player));
 
-            own_pieces &= own_pieces - 1;
+                get_moves(
+                    &mut push,
+                    self,
+                    position,
+                    Piece::new(piece, self.current_player),
+                );
+
+                bitboard &= bitboard - 1;
+            }
         }
 
         // Remove moves which put the king in check (invalid moves)
@@ -776,17 +782,25 @@ impl Game {
             }
         };
 
-        let mut own_pieces = self.bitboard_own();
+        for piece in PieceType::ALL {
+            let mut bitboard = self.bitboard_piece(piece, self.current_player);
 
-        while own_pieces != 0 {
-            let position = Position::from_bitboard(own_pieces);
-            let piece = self.get_position(position).unwrap();
+            while bitboard != 0 {
+                let position = Position::from_bitboard(bitboard);
 
-            if piece.owner == self.current_player {
-                get_moves(&mut push, self, position, piece);
+                debug_assert!(self
+                    .get_position(position)
+                    .is_some_and(|p| p.piece_type == piece && p.owner == self.current_player));
+
+                get_moves(
+                    &mut push,
+                    self,
+                    position,
+                    Piece::new(piece, self.current_player),
+                );
+
+                bitboard &= bitboard - 1;
             }
-
-            own_pieces &= own_pieces - 1;
         }
     }
 

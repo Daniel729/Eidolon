@@ -11,6 +11,16 @@ impl Position {
     pub const BLACK_QUEEN_ROOK: Self = Self::new_assert(7, 0);
     pub const BLACK_KING_ROOK: Self = Self::new_assert(7, 7);
 
+    pub const CASTLING_SHORT_OLD_KING: [Self; 2] = [Self::new_assert(0, 4), Self::new_assert(7, 4)];
+    pub const CASTLING_SHORT_NEW_KING: [Self; 2] = [Self::new_assert(0, 6), Self::new_assert(7, 6)];
+    pub const CASTLING_SHORT_OLD_ROOK: [Self; 2] = [Self::new_assert(0, 7), Self::new_assert(7, 7)];
+    pub const CASTLING_SHORT_NEW_ROOK: [Self; 2] = [Self::new_assert(0, 5), Self::new_assert(7, 5)];
+
+    pub const CASTLING_LONG_OLD_KING: [Self; 2] = [Self::new_assert(0, 4), Self::new_assert(7, 4)];
+    pub const CASTLING_LONG_NEW_KING: [Self; 2] = [Self::new_assert(0, 2), Self::new_assert(7, 2)];
+    pub const CASTLING_LONG_OLD_ROOK: [Self; 2] = [Self::new_assert(0, 0), Self::new_assert(7, 0)];
+    pub const CASTLING_LONG_NEW_ROOK: [Self; 2] = [Self::new_assert(0, 3), Self::new_assert(7, 3)];
+
     pub const fn new(row: i8, col: i8) -> Option<Self> {
         if 0 <= row && row < 8 && 0 <= col && col < 8 {
             Some(Self(row, col))

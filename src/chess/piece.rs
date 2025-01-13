@@ -33,6 +33,15 @@ impl PieceType {
             Self::King => 100,
         }
     }
+
+    pub const ALL: [Self; 6] = [
+        Self::Pawn,
+        Self::Knight,
+        Self::Bishop,
+        Self::Rook,
+        Self::Queen,
+        Self::King,
+    ];
 }
 
 impl Piece {
