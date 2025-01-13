@@ -24,7 +24,7 @@ pub const PIECE: [[u64; 12]; 64] = {
 
 const fn get_random_nums<const COUNT: usize>(start: usize) -> [u64; COUNT] {
     // Generated using this bash command:
-    // $ dd if=/dev/urandom of=./zobrist_bytes.bin bs=1 count=8208
+    // $ dd if=/dev/urandom of=./zobrist_bytes.bin bs=1 count=8200
     const ZOBRIST_NUMS: &[u8; 8200] = include_bytes!("../../zobrist_bytes.bin");
 
     let mut result = [0u64; COUNT];
