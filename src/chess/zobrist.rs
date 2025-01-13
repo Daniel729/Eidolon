@@ -1,8 +1,6 @@
 // Randomly generated constant numbers used for zobrist hashing
 pub const BLACK_TO_MOVE: u64 = get_random_nums::<1>(0)[0];
 
-pub const _EMPTY_PLACE: u64 = get_random_nums::<1>(1)[0];
-
 pub const STATE: [u64; 256] = get_random_nums::<256>(2);
 
 pub const PIECE: [[u64; 12]; 64] = {
@@ -27,7 +25,7 @@ pub const PIECE: [[u64; 12]; 64] = {
 const fn get_random_nums<const COUNT: usize>(start: usize) -> [u64; COUNT] {
     // Generated using this bash command:
     // $ dd if=/dev/urandom of=./zobrist_bytes.bin bs=1 count=8208
-    const ZOBRIST_NUMS: &[u8; 8208] = include_bytes!("../../zobrist_bytes.bin");
+    const ZOBRIST_NUMS: &[u8; 8200] = include_bytes!("../../zobrist_bytes.bin");
 
     let mut result = [0u64; COUNT];
 
@@ -62,8 +60,6 @@ mod tests {
         let mut set = std::collections::HashSet::new();
 
         assert!(set.insert(BLACK_TO_MOVE));
-
-        assert!(set.insert(_EMPTY_PLACE));
 
         for &num in &STATE {
             assert!(set.insert(num));
