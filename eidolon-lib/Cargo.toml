@@ -1,0 +1,17 @@
+
+[package]
+name = "eidolon"
+version = "0.1.0"
+edition = "2024"
+build = "build.rs"
+
+[dependencies]
+anyhow = "1.0"
+arrayvec = "0.7"
+multiversion = "0.8.0"
+nnue-constants = { path = "../nnue-constants" }
+scopeguard = "1.2.0"
+
+[build-dependencies]
+safetensors = "0.5.2"
+nnue-constants = { path = "../nnue-constants" }

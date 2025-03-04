@@ -1,0 +1,10 @@
+[package]
+name = "torch"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+nnue-constants = { path = "../nnue-constants" }
+anyhow = "1.0"
+fastrand = "2.3.0"
+tch = "0.19"

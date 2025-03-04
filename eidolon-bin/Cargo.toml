@@ -1,0 +1,14 @@
+[package]
+name = "eidolon-bin"
+version = "1.0.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0"
+arrayvec = "0.7"
+eidolon = { path = "../eidolon-lib" }
+rustc_version_runtime = "0.3.0"
+
+[[bin]]
+name = "eidolon"
+path = "src/main.rs"

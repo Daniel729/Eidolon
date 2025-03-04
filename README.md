@@ -1,25 +1,29 @@
 # Eidolon
 
-A simple chess engine written in Rust.
+A performant NNUE-powered chess engine written in Rust.
 
 ## Features
 
 - Support for the UCI protocol
-- Single-threaded search
-- Uses [PeSTO](https://www.talkchess.com/forum3/viewtopic.php?p=772515#p772515)'s piece-square table for a simple evaluation 
-- At the moment uses both bitboards + 8x8 matrix for representing pieces
+- (Only) Single-threaded search
+- Uses 8 PSQT buckets + a single NNUE network with 2x(768 -> 128) -> 1 architecture, and the clamp(x, 0, 1) ^ 2 activation function
+   - Uses runtime CPU detection to choose the best instruction set to use for inference (SSE2 / SSE4.2 / AVX2 / AVX512)
+   - The current network was trained on the following data sets
+      - [Zurichess's quiet labeled v7](https://bitbucket.org/zurichess/tuner/downloads/) - created by Alexandru Moșoi
+      - [Lichess big3 resolved](https://archive.org/details/lichess-big3-resolved.7z) - created by Jay Honnold
+      - [Ethereal's data dump](https://www.talkchess.com/forum3/viewtopic.php?t=75350) - created by Andrew Grant
+- Uses both bitboards + 8x8 matrix for representing the game's state
 - Alpha-beta search with iterative deepening, move ordering, null move pruning, late move reduction, and quiescence searching
-- Zobrist hashing, with hashes consistent acrosss compilations. (e.g. the starting position hash is always `4304F7D20D654676`)
-- A transposition table, currently ~64MB in size
-- Very roughly ~2400 ELO per my testing
-
+- Zobrist hashing, with hashes consistent acrosss compilations. (e.g. the starting position hash is always `2DFBA8745DE39E4F`)
+- A transposition table, defaults to 16MB in size
+- Very roughly ~3000 ELO per my testing
 
 ## Installation
 
 ### Build Instructions
 
    ```bash
-   $ cargo build --release
+   $ cargo build --profile=release-lto --bin eidolon
    ```
 
 ## Usage
@@ -35,10 +39,12 @@ bestmove g1f3
 > position startpos
 > show
 
-Hash: 4304F7D20D654676
-Fen: rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
-PGN: 
-Eval: mg 0, eg 0, phase 24
+[FEN "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"]
+
+
+Hash: 2DFBA8745DE39E4F
+Final eval (White's POV) 40
+Current FEN: rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
 
 8 |r|n|b|q|k|b|n|r|
 7 |p|p|p|p|p|p|p|p|
@@ -54,10 +60,12 @@ Eval: mg 0, eg 0, phase 24
 > position startpos moves g1f3
 > show
 
+[FEN "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"]
+1. Ngf3 
+
 Hash: AC0ECD2828C11674
-Fen: rnbqkbnr/pppppppp/8/8/8/5N2/PPPPPPPP/RNBQKB1R b KQkq - 0 1
-PGN: 1. Ngf3 
-Eval: mg 36, eg 47, phase 24
+Final eval (White's POV) 9
+Current FEN: rnbqkbnr/pppppppp/8/8/8/5N2/PPPPPPPP/RNBQKB1R b KQkq - 0 1
 
 8 |r|n|b|q|k|b|n|r|
 7 |p|p|p|p|p|p|p|p|
@@ -70,7 +78,6 @@ Eval: mg 36, eg 47, phase 24
 
    a b c d e f g h
 ```
-
 2. Additional commands
     1. Selfplay with a given time limit per move (in ms)
     ```
